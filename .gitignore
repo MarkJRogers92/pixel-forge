@@ -1,0 +1,9 @@
+.venv/
+library/
+projects.json
+__pycache__/
+*.pyc
+.claude/
+editor/node_modules/
+editor/dest/
+.pytest_cache/

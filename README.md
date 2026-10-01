@@ -1,0 +1,110 @@
+# Pixel Forge
+
+A local pixel-art tool where **Claude or GPT is the artist**. No PixelLab, no
+ComfyUI, no image model: the AI writes a small drawing program (palette, shapes,
+shading, outline, hand-placed pixels), a deterministic renderer turns it into exact
+pixels, and the AI then *looks at the render* and fixes it. Everything is real,
+editable pixel art from the first step.
+
+Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the editor.
+
+## Start
+
+```bash
+./forge.sh serve          # http://127.0.0.1:9002, then click the "AI" button on the right
+```
+
+### The AI panel
+| Tab | What it does |
+|---|---|
+| **Create** | Describe a sprite, pick size, style, review rounds and artist (Claude or GPT). The result opens as a new sprite or a new layer. Each review round is shown as a thumbnail you can go back to. |
+| **Refine** | "Make the cord more frayed": the artist edits the current frame; the result is added as a new layer, so your original stays. |
+| **Pixelize** | Turn any image (AI output, photo, screenshot, blurry upscale) into true pixel art: detects fake pixel grids, removes flat backgrounds, reduces colours or snaps to a style palette. |
+| **Assets** | Browse an existing project's sprites (read-only) and open copies to edit or refine. **Learn style** builds a style profile (palette, sizes, outline habit, reference sprites) from that project. |
+
+## Fully automatic (for you, Claude Code, or Codex)
+
+```bash
+./forge.sh make "cream 1994 mall payphone with a frayed cord" --project dead-mall -W 32 -H 48 --out ~/Desktop/art
+./forge.sh make "rusty shopping cart" --artist gpt --rounds 2
+./forge.sh cleanup some_ai_image.png -W 32 -H 32 --colors 16
+./forge.sh cleanup gpt_image.png -W 64 -H 64 --colors 32 --preset illustration --out sprite.png
+./forge.sh project add ~/code/my-game/assets --name "My game" && ./forge.sh project learn my-game
+```
+
+`make` = learn style (if needed) → N drafts in parallel → a judge scores them (0-4 on
+identity, readability at 1x, style, structure) → review rounds on the winner → the best
+version is kept (a worse late round never wins) → automatic cleanup → save to `library/` →
+optional copy to `--out` (never overwrites).
+
+Useful options:
+- `-n 3` three drafts, judge picks the best (default 1 in the CLI, 3 in the chat tools)
+- `--check "screen crack visible at 1x"` requirements the reviews and judge must verify
+- `--artist gpt-image` GPT paints a detailed base, it is converted to pixels, Claude redraws it clean
+- `--rounds 0` fastest draft only; `--no-polish` skip cleanup
+
+For an existing GPT illustration, choose **GPT image / illustration** in the Pixelize
+tab, or pass `--preset illustration` to `cleanup` (`preset="illustration"` in
+`forge_pixelize`). It preserves contrasting highlights during downsampling, then
+uses the existing polish pass to reduce painted speckle and organize the outline.
+Native pixels and recovered upscales are left intact when no shrinking is needed.
+Standard keeps the previous conversion behavior. Both produce native pixels, limited
+colors and binary transparency. Review at 1x: a detailed painting can still need a
+pixel redraw, especially below 64 pixels. Background removal handles existing alpha
+or a flat border color; the report warns when it leaves the source opaque.
+
+### Automatic cleanup (every result)
+Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark
+outer outline, while keeping deliberate details: glints, rows of lights, multi-shade lights,
+1-px cords and wires, detached sparks and enclosed holes (all covered by tests).
+
+### MCP server (Claude Code / Codex call it as tools)
+```bash
+claude mcp add pixel-forge -s user -- ~/code/pixel-forge/forge.sh mcp
+codex mcp add pixel-forge -- ~/code/pixel-forge/forge.sh mcp
+```
+Tools: `forge_make` (automatic), `forge_guide` + `forge_render` (the calling agent
+draws itself and sees the image), `forge_pixelize`, `forge_add_project`,
+`forge_learn_style`, `forge_project_assets`, `forge_status`.
+
+## Artists
+| id | how | needs |
+|---|---|---|
+| `claude` / `cli` | `claude -p` (your Claude subscription) | `claude` logged in (`claude` → `/login`) |
+| `gpt` / `codex` | `codex exec` (your ChatGPT login) | `codex login` |
+| `api` | Anthropic API | `ANTHROPIC_API_KEY` |
+| `gpt-image` | GPT paints (codex image tool) → pixelize → Claude redraws | both CLIs logged in |
+
+## Layout
+```
+forge/sprite.py        indexed sprite document (palette + rows, "." = transparent)
+forge/dsl.py           sprite-program renderer (rect, ellipse, poly, pixels, shade, outline, dither…)
+forge/artist_guide.md  the pixel-art craft guide + language reference the artist reads
+forge/artist.py        draft → render → look → fix loop; claude / codex / API backends
+forge/cleanup.py       image → pixel art (grid detection + verification, background, palette)
+forge/polish.py        automatic cleanup (noise, speckle, outline) that keeps intended details
+forge/qa.py            measurable checks (colours, stray pixels, outline, cropping, fragments)
+forge/projects.py      pull art + learn style from existing project folders (read-only)
+forge/server.py        local HTTP server for the editor panel
+forge/mcp_server.py    MCP tools
+editor/                Piskel fork; AI panel = src/js/controller/settings/ForgeController.js
+profiles/              style profiles (+ refs/ reference sprites)
+library/               every result with its programs, review notes and QA (git-ignored)
+```
+
+## Tests
+```bash
+.venv/bin/python -m pytest -q tests
+```
+
+## Asset workflow
+The step-by-step process for new assets (checklist → Claude and GPT-hybrid routes →
+compare at 1x → targeted fixes → combine favourites → finals) is in `WORKFLOW.md`.
+In Claude Code, ask for a new asset or run `/pixel-asset` to follow it automatically.
+
+## Tool decisions
+See `TOOLS.md` for what was adopted from the research handoffs, what was tested and rejected, and why.
+
+## Licences
+Piskel is Apache-2.0 (see `editor/LICENSE`). Your project art is only read, never
+modified; reference copies go to `profiles/refs/`.

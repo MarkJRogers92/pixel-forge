@@ -1,0 +1,54 @@
+{
+  "name": "DEAD MALL neon",
+  "style": "Match the existing art of 'DEAD MALL neon' (154 images analysed). Typical sprite: about 32x32 px using ~25 colours, partial / selective outlines. Keep proportions, level of detail and shading style consistent with the reference images.",
+  "palette": {
+    "a": "#040202",
+    "b": "#14141c",
+    "c": "#161833",
+    "d": "#3b1d23",
+    "e": "#292d46",
+    "f": "#292c5c",
+    "g": "#31333e",
+    "h": "#662331",
+    "i": "#4335a6",
+    "j": "#4e4d56",
+    "k": "#3e4e70",
+    "l": "#95262d",
+    "m": "#853c2e",
+    "n": "#6d5047",
+    "o": "#3e6c5e",
+    "p": "#b03c9d",
+    "q": "#6c767d",
+    "r": "#926f3f",
+    "s": "#d74634",
+    "t": "#598842",
+    "u": "#5b8ab8",
+    "v": "#d27555",
+    "w": "#9d86c1",
+    "x": "#9a9990",
+    "y": "#ed72bc",
+    "z": "#a3c4da",
+    "A": "#fbb159",
+    "B": "#99ce94",
+    "C": "#f2b486",
+    "D": "#d4cda4",
+    "E": "#f2ee8c",
+    "F": "#eaeae5"
+  },
+  "palette_mode": "prefer",
+  "size": [
+    32,
+    32
+  ],
+  "references": [
+    "refs/dead-mall/payphone.png",
+    "refs/dead-mall/food-table-set.png",
+    "refs/dead-mall/rc-car.png",
+    "refs/dead-mall/perk-coffee.png"
+  ],
+  "source": {
+    "project": "dead-mall",
+    "path": "/Users/markrogers/code/90s/.worktrees/neon-overhaul/public/assets/neon",
+    "files": 154
+  }
+}

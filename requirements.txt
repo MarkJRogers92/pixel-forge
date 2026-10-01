@@ -1,0 +1,4 @@
+pillow>=12
+numpy>=2
+mcp>=2
+pytest

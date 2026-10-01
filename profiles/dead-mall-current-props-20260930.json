@@ -1,0 +1,49 @@
+{
+  "name": "DEAD MALL current roof and shop props",
+  "style": "Native sprite candidates matching the current rooftop metalwork and cyan/magenta shop displays. Bold silhouettes, sparse wear, cool steel-gray and navy shadows, cream/gold accents.",
+  "palette": {
+    "a": "#9198a5",
+    "b": "#697281",
+    "c": "#444e5d",
+    "d": "#2e3847",
+    "e": "#060a0e",
+    "f": "#c0bdb8",
+    "g": "#828181",
+    "h": "#51504f",
+    "i": "#2d2b2c",
+    "j": "#1e1d1d",
+    "k": "#f4bf6d",
+    "l": "#b67c32",
+    "m": "#835620",
+    "n": "#472f15",
+    "o": "#ecd1ba",
+    "p": "#b59984",
+    "q": "#796453",
+    "r": "#43382f",
+    "s": "#1c1d25",
+    "t": "#232b43",
+    "u": "#1f2636",
+    "v": "#7de8ff",
+    "w": "#3ab7e2",
+    "x": "#1c7cab",
+    "y": "#10496e",
+    "z": "#ff78dc",
+    "A": "#d040a8",
+    "B": "#962078",
+    "C": "#5c134c",
+    "D": "#e7634b",
+    "E": "#cb4736",
+    "F": "#902522"
+  },
+  "palette_mode": "strict",
+  "size": [
+    64,
+    64
+  ],
+  "source": {
+    "repository_commit": "cf6a6e337ff6c7bbd1a010538046bba8cdaccbd8",
+    "repo_palette": "docs/art/palettes/deadmall-global.json",
+    "authoritative_palette": "deadmall-global.gpl",
+    "selection": "32 colors; all verified against the repository palette and authoritative GPL"
+  }
+}

@@ -2,6 +2,7 @@
 
   serve                              editor + AI panel on http://127.0.0.1:9002
   mcp                                MCP server (stdio) for Claude Code / Codex
+  mcp-readonly                       restricted MCP for existing assets; no generation
   make "prompt" [options]            fully automatic: style -> draw -> review -> QA -> save/export
   render program.json                render a sprite program (when an agent draws directly)
   cleanup image.png                  turn any image into true pixel art
@@ -123,6 +124,7 @@ def main(argv=None):
 
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=9002)
     sub.add_parser("mcp")
+    sub.add_parser("mcp-readonly")
     sub.add_parser("guide")
     sub.add_parser("profiles")
 
@@ -187,6 +189,9 @@ def main(argv=None):
         serve(a.port)
     elif a.cmd == "mcp":
         from .mcp_server import main as mcp_main
+        mcp_main()
+    elif a.cmd == "mcp-readonly":
+        from .readonly_mcp import main as mcp_main
         mcp_main()
     elif a.cmd == "guide":
         print(artist.GUIDE)

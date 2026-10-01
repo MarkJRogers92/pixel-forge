@@ -100,6 +100,13 @@ calling agent draws itself and sees the image), `forge_pixelize`, `forge_open`,
 `forge_from_aseprite`, `forge_lint`, `forge_add_project`, `forge_learn_style`,
 `forge_project_assets`, `forge_status` (also reports route keys and the Aseprite path).
 
+For a connection that can only inspect existing art, use `./forge.sh mcp-readonly`.
+It exposes five tools: `forge_status`, `forge_projects`, `forge_project_assets`,
+`forge_library`, and `forge_preview`. It cannot generate, edit, export, register
+projects, launch editors, or read route credentials. Project reads are limited to
+the registered `dead-mall` art folder; library previews show the final `sprite.png`.
+See [READONLY-MCP.md](READONLY-MCP.md) for setup and the private tunnel approval boundary.
+
 ## Artists
 | id | how | needs |
 |---|---|---|

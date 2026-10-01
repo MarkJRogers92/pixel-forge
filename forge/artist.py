@@ -76,8 +76,9 @@ class CliBackend(Backend):
         return out.get("result", "")
 
 
-# Codex's configured default model can be one a ChatGPT login may not use (2026-10-01:
-# `gpt-6.1-sol` after an app update); then retry once with a model that works.
+# Codex's configured default model is used (gpt-6.1-sol since 2026-10-01). An out-of-date
+# Codex CLI refuses models it does not know yet ("not supported ... ChatGPT account": run
+# `codex update`); rather than fail the whole run, retry once with a model that works.
 CODEX_FALLBACK_MODEL = "gpt-5.5"
 _REFUSED = "not supported when using Codex with a ChatGPT account"
 
@@ -540,5 +541,6 @@ def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | N
     src = max(new, key=lambda p: p.stat().st_mtime)
     dst = workdir / "gpt_painting.png"
     shutil.copy(src, dst)
-    log(f"GPT painting ready ({src.name})")
+    used = next((line.split(":", 1)[1].strip() for line in said.splitlines() if line.startswith("model:")), "?")
+    log(f"GPT painting ready ({src.name}, model {used})")
     return dst

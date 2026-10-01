@@ -306,7 +306,9 @@ RUBRIC = (
     "4 = production quality. Judge what you SEE, not what was intended.\n"
     "For every candidate also name in 'strengths' the one specific, visible feature worth "
     "keeping even if it loses (e.g. 'the glowing pink marquee', 'plush toys readable through "
-    "the glass'), or leave it empty if nothing beats the others.\n"
+    "the glass'). Only name a feature that SERVES the request and its must-satisfy checks: a "
+    "feature that contradicts them (neat hanging clothes on a rack that must look knocked "
+    "over) is a defect, not a strength. Leave it empty if nothing qualifies.\n"
     "Reply with a short comparison, then one ```json block: "
     '{"scores": [{"id": 1, "identity": 0, "readability": 0, "style": 0, "structure": 0, '
     '"defects": "...", "strengths": "..."}], "best": 1}'
@@ -534,6 +536,8 @@ def _combine(req: Request, drafts: list[Step], labels: list[str], best_i: int, v
         *wanted,
         "The result must read as ONE coherent sprite: one light direction, one outline, one palette "
         "(merge near-identical colours), no seams where parts came from.",
+        "Skip any listed feature that would break the request or a MUST SATISFY check: the winner's "
+        "reading of the request comes first, the borrowed features second.",
         "", "STARTING SPRITE (rows):", _rows_block(winner.sprite),
         "", 'Reply with your plan, then one ```json block: a {"base": "current", "ops": [...]} patch for '
             "local additions, or a complete new program if the features need a redraw.",

@@ -70,6 +70,10 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   target size, and it competes with the artist's drafts in the judging. A winning route
   draft is then reviewed and polished like any other. Keys: `PIXELLAB_API_KEY`,
   `RETRODIFFUSION_API_KEY` (environment or `~/.zshrc`). Each route call spends credits.
+- **Combine** (on by default; `--no-combine` to skip): the judge also names the best
+  feature of every draft ("the glowing marquee", "plush readable through the glass"), and
+  the artist brings those into the winner as one coherent sprite. The combination is
+  reviewed like any version and must win the final judging, so it can never lower quality.
 - **Aseprite** (`--open aseprite`, `forge open`): a layered `sprite.aseprite` in the
   library item (final on top, then review steps, drafts and route drafts as hidden
   layers) opens in your Aseprite window. With the Aseprite AI Artist extension attached

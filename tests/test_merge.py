@@ -310,3 +310,61 @@ def test_the_gpt_painter_retries_too_and_says_why_when_it_still_fails(tmp_path, 
     with pytest.raises(artist.ArtistError, match="not supported"):
         artist.paint_with_gpt_image("x", 32, 32, None, tmp_path / "work", log=lambda m: None)
     assert len(calls) == 2 and "-m" in calls[1]
+
+
+# ------------------------------------- combine: the best feature of each draft
+class CombiningBackend(artist.Backend):
+    """Judges #1 best, says what is worth keeping from each, and combines when asked."""
+    name = "fake"
+
+    def __init__(self, final_pick=None):
+        self.asked = []
+        self.final_pick = final_pick
+
+    def ask(self, system, text, images, workdir):
+        self.asked.append(text)
+        if "judging" in text:
+            n = int(text.split("judging ")[1].split(" ")[0])
+            best = self.final_pick if (self.final_pick and n == 2) else 1
+            return "```json\n" + json.dumps({"best": best, "scores": [
+                {"id": i + 1, "identity": 3, "strengths": "" if i == 0 else f"feature {i + 1}"} for i in range(n)]}) + "\n```"
+        if "COMBINE" in text:
+            return "```json\n" + json.dumps({"base": "current", "ops": [{"op": "points", "points": [[5, 5]], "c": "k"}]}) + "\n```"
+        return "```json\n" + json.dumps({"width": 12, "height": 10, "palette": {"k": "#101018", "a": "#e0408a"},
+                                         "ops": [{"op": "rect", "x": 0, "y": 0, "w": 12, "h": 10, "c": "a"}]}) + "\n```"
+
+
+def test_the_combine_step_brings_in_what_the_judge_liked_from_the_losers(tmp_path):
+    req = artist.Request("box", 12, 10, rounds=0, candidates=1, polish=False,
+                         external=[("pixellab", sprite(box(12, 10, "b"))), ("rd", sprite(box(12, 10, "c")))])
+    backend = CombiningBackend(final_pick=2)
+    steps = artist.generate(req, backend, tmp_path, log=lambda m: None)
+    combined = [s for s in steps if s.kind == "combine"]
+    assert len(combined) == 1
+    prompt = next(t for t in backend.asked if "COMBINE" in t)
+    assert "#2 (pixellab): feature 2" in prompt and "#3 (rd): feature 3" in prompt
+    assert "feature 2" in combined[0].notes
+    assert (tmp_path / "combined.png").exists()
+    assert steps[-1].sprite.get(5, 5) == "k"          # the combined version won the final judging
+
+
+def test_keep_best_can_still_throw_the_combination_away(tmp_path):
+    req = artist.Request("box", 12, 10, rounds=0, candidates=1, polish=False,
+                         external=[("pixellab", sprite(box(12, 10, "b")))])
+    steps = artist.generate(req, CombiningBackend(final_pick=1), tmp_path, log=lambda m: None)
+    assert any(s.kind == "combine" for s in steps)
+    assert steps[-1].sprite.get(5, 5) != "k"          # the plain winner was kept
+
+
+def test_no_combine_when_asked_not_to_or_nothing_was_worth_keeping(tmp_path):
+    req = artist.Request("box", 12, 10, rounds=0, candidates=1, polish=False, combine=False,
+                         external=[("pixellab", sprite(box(12, 10, "b")))])
+    steps = artist.generate(req, CombiningBackend(), tmp_path / "a", log=lambda m: None)
+    assert not any(s.kind == "combine" for s in steps)
+
+
+def test_the_combined_version_gets_its_own_aseprite_layer(tmp_path, monkeypatch):
+    item_id, d, _ = fake_item(tmp_path, monkeypatch)
+    sprite(box(12, 10, "c")).save(d / "work" / "combined.png")
+    names = [name for name, _, _ in editors.document_layers(item_id)]
+    assert names[:3] == ["final", "review 1", "combined"]

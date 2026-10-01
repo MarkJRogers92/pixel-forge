@@ -37,7 +37,7 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
          polish: bool = True, use_references: bool = True, keep_steps: bool = False,
          retouch_only: bool = False, candidates: int = 1, checks: list[str] | None = None,
          refs: list[str] | None = None, routes: list[str] | None = None,
-         open_in: str | None = None) -> dict:
+         open_in: str | None = None, combine: bool = True) -> dict:
     """The automatic pipeline shared by the CLI and the MCP server."""
     if project and not profile:
         profile = projects.get(project)["id"]
@@ -83,7 +83,7 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
     external = route_mod.run_routes(routes or [], prompt, w, h, prof, d / "work", log) if routes else []
     req = artist.Request(edit_prompt, w, h, prof, rounds, base, ref_list,
                          polish=polish, retouch=retouch, candidates=candidates, checks=checks or [],
-                         external=external)
+                         external=external, combine=combine)
     backend = artist.make_backend(artist_name, model)
     log(f"artist: {backend.name}; saving to library/{item_id}")
     steps = artist.generate(req, backend, d / "work", log)
@@ -146,6 +146,8 @@ def main(argv=None):
                        help="acceptance requirement the reviews and judge must verify (repeatable)")
         g.add_argument("--route", action="append", default=[], choices=sorted(route_mod.ROUTES),
                        help="also get a draft from pixellab or rd (Retro Diffusion); spends credits (repeatable)")
+        g.add_argument("--no-combine", action="store_true",
+                       help="skip the combine step (bringing the best feature of each other draft into the winner)")
         g.add_argument("--open", dest="open_in", choices=editors.EDITORS,
                        help="open the result: aseprite (layered document), piskel, or both")
 
@@ -194,7 +196,7 @@ def main(argv=None):
         dump(make(a.prompt, a.width, a.height, a.profile, a.project, a.rounds, a.artist, a.model,
                   a.start, a.out, log=lambda m: print(m, file=sys.stderr), refiner=a.refiner,
                   polish=not a.no_polish, candidates=a.candidates, checks=a.check, refs=a.ref,
-                  routes=a.route, open_in=a.open_in))
+                  routes=a.route, open_in=a.open_in, combine=not a.no_combine))
     elif a.cmd == "render":
         base = Sprite.from_image(load_image(Path(a.base).read_bytes())) if a.base else None
         res = dsl.render(json.loads(Path(a.program).read_text()), base)

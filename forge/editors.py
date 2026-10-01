@@ -37,6 +37,8 @@ def document_layers(item_id: str) -> list[tuple[str, Path, bool]]:
     if work.exists():
         steps = sorted((p for p in work.glob("step_*.png") if p.stem != "step_0"), key=_key, reverse=True)
         layers += [(f"review {_key(p)[0]}", p, False) for p in steps]
+        if (work / "combined.png").exists():
+            layers.append(("combined", work / "combined.png", False))
         layers += [(f"draft {_key(p)[0]}", p, False) for p in sorted(work.glob("draft_*.png"), key=_key)]
         layers += [(f"route {p.stem[len('route_'):]}", p, False) for p in sorted(work.glob("route_*.png"))]
         if (work / "pixelized.png").exists():

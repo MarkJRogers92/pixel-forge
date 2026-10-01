@@ -212,6 +212,7 @@ class Request:
     checks: list[str] = field(default_factory=list)   # acceptance checklist for reviews/judging
     # drafts painted elsewhere (routes.py: PixelLab, Retro Diffusion), judged with the artist's own
     external: list = field(default_factory=list)       # [(label, Sprite)]
+    combine: bool = True     # after judging, bring the best feature of each loser into the winner
 
 
 @dataclass
@@ -303,9 +304,12 @@ RUBRIC = (
     "- structure: coherent construction and perspective, no broken or merged parts?\n"
     "0 = unusable, 1 = major defects, 2 = needs substantial fixes, 3 = usable with minor fixes, "
     "4 = production quality. Judge what you SEE, not what was intended.\n"
+    "For every candidate also name in 'strengths' the one specific, visible feature worth "
+    "keeping even if it loses (e.g. 'the glowing pink marquee', 'plush toys readable through "
+    "the glass'), or leave it empty if nothing beats the others.\n"
     "Reply with a short comparison, then one ```json block: "
     '{"scores": [{"id": 1, "identity": 0, "readability": 0, "style": 0, "structure": 0, '
-    '"defects": "..."}], "best": 1}'
+    '"defects": "...", "strengths": "..."}], "best": 1}'
 )
 
 
@@ -421,12 +425,18 @@ def generate(req: Request, backend: Backend, workdir: Path,
     log(f"{len(drafts)} draft(s) rendered" + (f" ({len(req.external)} from routes)" if req.external else ""))
 
     steps: list[Step] = list(drafts)
-    best_i, _ = judge(req, [d.sprite for d in drafts], backend, workdir, "drafts", log)
+    best_i, verdict = judge(req, [d.sprite for d in drafts], backend, workdir, "drafts", log)
     chain = [drafts[best_i]]           # the winner and its review rounds
     if len(drafts) > 1:
         steps.append(Step("draft", drafts[best_i].program, drafts[best_i].sprite, drafts[best_i].errors,
                           drafts[best_i].qa, notes=f"picked candidate #{best_i + 1} ({labels[best_i]})"))
     drafts[best_i].sprite.save(workdir / "step_0.png")
+
+    if req.combine and len(drafts) > 1:
+        combined = _combine(req, drafts, labels, best_i, verdict, backend, workdir, refs, log)
+        if combined is not None:
+            chain.append(combined)
+            steps.append(combined)
 
     for r in range(1, req.rounds + 1):
         cur = chain[-1]
@@ -489,6 +499,65 @@ def generate(req: Request, backend: Backend, workdir: Path,
                       notes=f"best of {len(contenders)} versions" + (" (polished)" if req.polish else "")))
     final.save(workdir / "final.png")
     return steps
+
+
+def _combine(req: Request, drafts: list[Step], labels: list[str], best_i: int, verdict: dict,
+             backend: Backend, workdir: Path, refs: list[Path], log) -> Step | None:
+    """One sprite from all of them: the winner, plus the feature the judge liked in each loser.
+
+    The combination is only a contender: it is reviewed like the winner and the final
+    keep-best judging can still choose the plain winner, so combining never lowers quality.
+    """
+    wanted = []
+    for sc in verdict.get("scores", []):
+        try:
+            i = int(sc.get("id", 0)) - 1
+        except (TypeError, ValueError):
+            continue
+        feature = str(sc.get("strengths") or "").strip()
+        if 0 <= i < len(drafts) and i != best_i and feature:
+            wanted.append(f"- from #{i + 1} ({labels[i]}): {feature}")
+    if not wanted:
+        log("combine: the judge saw nothing in the other drafts worth bringing in")
+        return None
+    sheet = workdir / "judge_drafts.png"
+    if not sheet.exists():
+        contact_sheet([d.sprite for d in drafts], sheet)
+    winner = drafts[best_i]
+    start = _write_preview(winner.sprite, workdir / "start.png")
+    text = "\n".join([
+        f"COMBINE ({req.width}x{req.height}): {req.prompt}",
+        _profile_text(req.profile),
+        f"{sheet.name} shows all {len(drafts)} candidates, numbered. The STARTING SPRITE (start.png) is "
+        f"candidate #{best_i + 1}, the judge's pick. Keep its silhouette, structure and proportions, and "
+        f"bring in these features from the others, redrawn to fit it (copy what you see, do not invent):",
+        *wanted,
+        "The result must read as ONE coherent sprite: one light direction, one outline, one palette "
+        "(merge near-identical colours), no seams where parts came from.",
+        "", "STARTING SPRITE (rows):", _rows_block(winner.sprite),
+        "", 'Reply with your plan, then one ```json block: a {"base": "current", "ops": [...]} patch for '
+            "local additions, or a complete new program if the features need a redraw.",
+    ] + (["", "MUST SATISFY:" + "".join(f"\n- {c}" for c in req.checks)] if req.checks else []))
+    t0 = time.time()
+    log(f"combine: bringing in {len(wanted)} feature(s) from the other drafts…")
+    try:
+        reply = backend.ask(GUIDE, text, [sheet, start] + refs, workdir)
+        (workdir / "reply_combine.md").write_text(reply)
+        program = extract_program(reply)
+    except ArtistError as e:
+        log(f"combine failed ({e}); continuing with the winner")
+        return None
+    if req.retouch:
+        program["base"] = "current"
+    base = winner.sprite if program.get("base") == "current" else None
+    if base is not None:
+        program.setdefault("width", winner.sprite.width)
+        program.setdefault("height", winner.sprite.height)
+    res = dsl.render(program, base)
+    res.sprite.save(workdir / "combined.png")
+    notes = "combined: " + "; ".join(w[2:] for w in wanted)
+    return Step("combine", program, res.sprite, res.errors, qa.check(res.sprite), notes=notes,
+                seconds=time.time() - t0)
 
 
 # ------------------------------------------------------- hybrid: GPT paints

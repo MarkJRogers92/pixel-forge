@@ -72,18 +72,20 @@ def forge_render(program: dict, base_png: str | None = None, save: bool = True,
     "(default 3). checks: acceptance requirements to verify. routes: also get drafts from "
     "'pixellab' and/or 'rd' (Retro Diffusion) that compete in the judging (spends credits). "
     "open_in: 'aseprite' (layered document: final on top, every other version as hidden "
-    "layers), 'piskel' or 'both'. Takes 2-6 minutes."))
+    "layers), 'piskel' or 'both'. combine (default true): after judging, the artist brings the "
+    "best feature of each other draft into the winner; the combination still has to win the "
+    "final judging. Takes 2-6 minutes."))
 def forge_make(prompt: str, width: int | None = None, height: int | None = None,
                profile: str | None = None, project: str | None = None, rounds: int = 2,
                artist_name: str | None = None, model: str | None = None,
                start_png: str | None = None, out: str | None = None, candidates: int = 3,
                checks: list[str] | None = None, routes: list[str] | None = None,
-               open_in: str | None = None) -> list:
+               open_in: str | None = None, combine: bool = True) -> list:
     from .cli import make
     log: list[str] = []
     result = make(prompt, width, height, profile, project, rounds, artist_name, model,
                   start_png, out, log=log.append, candidates=candidates, checks=checks,
-                  routes=routes, open_in=open_in)
+                  routes=routes, open_in=open_in, combine=combine)
     result["log"] = log
     return [json.dumps(result, default=str),
             _preview(Sprite.from_image(load_image(Path(result["png"]).read_bytes())))]

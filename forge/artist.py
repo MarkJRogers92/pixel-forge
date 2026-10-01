@@ -76,6 +76,16 @@ class CliBackend(Backend):
         return out.get("result", "")
 
 
+# Codex's configured default model can be one a ChatGPT login may not use (2026-10-01:
+# `gpt-6.1-sol` after an app update); then retry once with a model that works.
+CODEX_FALLBACK_MODEL = "gpt-5.5"
+_REFUSED = "not supported when using Codex with a ChatGPT account"
+
+
+def _codex_fallback() -> str:
+    return os.environ.get("FORGE_CODEX_MODEL") or CODEX_FALLBACK_MODEL
+
+
 class CodexBackend(Backend):
     """GPT via the local `codex exec` command (uses the ChatGPT/Codex login)."""
     name = "gpt"
@@ -89,18 +99,23 @@ class CodexBackend(Backend):
         out_file = workdir / f"codex_reply_{int(time.time() * 1000)}.md"
         prompt = (f"{system}\n\n---\n\n{text}\n\nDo not run commands or edit files; "
                   f"just answer with your reasoning and the ```json program.")
-        cmd = [self.exe, "exec", "--skip-git-repo-check", "-s", "read-only",
-               "--color", "never", "-o", str(out_file)]
-        if self.model:
-            cmd += ["-m", self.model]
-        for p in images:
-            cmd += ["-i", str(p)]
-        cmd += ["--", prompt]
-        try:
-            proc = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
-                                  timeout=self.timeout, stdin=subprocess.DEVNULL)
-        except subprocess.TimeoutExpired:
-            raise ArtistError(f"codex timed out after {self.timeout}s")
+        def run(model):
+            cmd = [self.exe, "exec", "--skip-git-repo-check", "-s", "read-only",
+                   "--color", "never", "-o", str(out_file)]
+            if model:
+                cmd += ["-m", model]
+            for p in images:
+                cmd += ["-i", str(p)]
+            cmd += ["--", prompt]
+            try:
+                return subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
+                                      timeout=self.timeout, stdin=subprocess.DEVNULL)
+            except subprocess.TimeoutExpired:
+                raise ArtistError(f"codex timed out after {self.timeout}s")
+        proc = run(self.model)
+        if _REFUSED in (proc.stderr or "") + (proc.stdout or "") and not self.model:
+            self.model = _codex_fallback()
+            proc = run(self.model)
         if not out_file.exists() or not out_file.read_text().strip():
             tail = (proc.stderr or proc.stdout)[-600:]
             if "login" in tail.lower() or "auth" in tail.lower():
@@ -502,16 +517,26 @@ def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | N
     exe = shutil.which("codex") or str(Path.home() / ".local/bin/codex")
     started = time.time()
     log("GPT is painting the base image…")
-    try:
-        subprocess.run([exe, "exec", "--skip-git-repo-check", "-s", "read-only", "--color", "never",
-                        "--", brief], cwd=workdir, capture_output=True, text=True,
-                       timeout=timeout, stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        raise ArtistError("GPT image generation timed out")
+
+    def paint(model):
+        cmd = [exe, "exec", "--skip-git-repo-check", "-s", "read-only", "--color", "never"]
+        cmd += (["-m", model] if model else []) + ["--", brief]
+        try:
+            return subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
+                                  timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            raise ArtistError("GPT image generation timed out")
+    proc = paint(None)
+    said = (proc.stderr or "") + (proc.stdout or "")
+    if _REFUSED in said:
+        log(f"codex refused its default model; retrying with {_codex_fallback()}")
+        proc = paint(_codex_fallback())
+        said = (proc.stderr or "") + (proc.stdout or "")
     new = [p for p in GENERATED_DIR.glob("*/*.png") if p.stat().st_mtime >= started - 2]
     if not new:
-        raise ArtistError("GPT did not produce an image (is `codex login` done and image "
-                          "generation enabled?)")
+        errors = [line for line in said.splitlines() if "ERROR" in line or "error" in line.lower()]
+        raise ArtistError("GPT did not produce an image: " + (errors[-1][:300] if errors else
+                          "no error reported (is `codex login` done and image generation enabled?)"))
     src = max(new, key=lambda p: p.stat().st_mtime)
     dst = workdir / "gpt_painting.png"
     shutil.copy(src, dst)

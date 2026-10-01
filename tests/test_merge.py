@@ -276,3 +276,37 @@ def test_make_sends_route_drafts_to_the_judging_and_opens_the_editor(tmp_path, m
     assert seen["external"] == ["pixellab"]
     assert seen["opened"] == (result["library_id"], "aseprite")
     assert result["opened"] == {"library_id": result["library_id"], "aseprite": "x"}
+
+
+# ----------------------------------- GPT when Codex's default model is refused
+REFUSED = 'ERROR: {"type":"error","status":400,"error":{"message":"The \'gpt-6.1-sol\' model is not supported when using Codex with a ChatGPT account."}}'
+
+
+def test_codex_retries_a_refused_default_model_with_the_fallback(tmp_path, monkeypatch):
+    import subprocess as sp
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if "-m" not in cmd:
+            return sp.CompletedProcess(cmd, 0, "", REFUSED)
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.write_text("```json\n{}\n```")
+        return sp.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(artist.subprocess, "run", fake_run)
+    monkeypatch.delenv("FORGE_CODEX_MODEL", raising=False)
+    reply = artist.CodexBackend().ask("sys", "draw", [], tmp_path)
+    assert "json" in reply
+    assert calls[-1][calls[-1].index("-m") + 1] == artist.CODEX_FALLBACK_MODEL
+
+
+def test_the_gpt_painter_retries_too_and_says_why_when_it_still_fails(tmp_path, monkeypatch):
+    import subprocess as sp
+    calls = []
+    monkeypatch.setattr(artist, "GENERATED_DIR", tmp_path / "generated")
+    monkeypatch.setattr(artist.subprocess, "run",
+                        lambda cmd, **kw: calls.append(cmd) or sp.CompletedProcess(cmd, 0, "", REFUSED))
+    with pytest.raises(artist.ArtistError, match="not supported"):
+        artist.paint_with_gpt_image("x", 32, 32, None, tmp_path / "work", log=lambda m: None)
+    assert len(calls) == 2 and "-m" in calls[1]

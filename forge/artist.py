@@ -194,6 +194,8 @@ class Request:
     candidates: int = 1                 # parallel drafts; the judge picks the best
     keep_best: bool = True              # final judging: a worse late round never wins
     checks: list[str] = field(default_factory=list)   # acceptance checklist for reviews/judging
+    # drafts painted elsewhere (routes.py: PixelLab, Retro Diffusion), judged with the artist's own
+    external: list = field(default_factory=list)       # [(label, Sprite)]
 
 
 @dataclass
@@ -390,18 +392,24 @@ def generate(req: Request, backend: Backend, workdir: Path,
                 drafts.append(f.result())
             except Exception as e:
                 log(f"draft {i + 1} failed: {e}")
+    # external routes compete on equal terms; a winner is then reviewed as a patch on its pixels
+    labels = [f"{backend.name} draft {i + 1}" for i in range(len(drafts))]
+    for label, ext in req.external:
+        drafts.append(Step("candidate", {"base": "current", "ops": [], "source": label}, ext, [],
+                           qa.check(ext), notes=f"route {label}"))
+        labels.append(label)
     if not drafts:
         raise ArtistError("every draft failed")
     for d in drafts:
         d.kind = "candidate" if len(drafts) > 1 else "draft"
-    log(f"{len(drafts)} draft(s) rendered")
+    log(f"{len(drafts)} draft(s) rendered" + (f" ({len(req.external)} from routes)" if req.external else ""))
 
     steps: list[Step] = list(drafts)
     best_i, _ = judge(req, [d.sprite for d in drafts], backend, workdir, "drafts", log)
     chain = [drafts[best_i]]           # the winner and its review rounds
     if len(drafts) > 1:
         steps.append(Step("draft", drafts[best_i].program, drafts[best_i].sprite, drafts[best_i].errors,
-                          drafts[best_i].qa, notes=f"picked candidate #{best_i + 1}"))
+                          drafts[best_i].qa, notes=f"picked candidate #{best_i + 1} ({labels[best_i]})"))
     drafts[best_i].sprite.save(workdir / "step_0.png")
 
     for r in range(1, req.rounds + 1):

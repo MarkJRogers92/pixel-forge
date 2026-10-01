@@ -1,6 +1,7 @@
 """Deterministic checks on a sprite. Measurements, not taste."""
 from __future__ import annotations
 
+from .lint import lint
 from .sprite import TRANSPARENT, Sprite, parse_hex
 
 
@@ -79,4 +80,6 @@ def check(s: Sprite, max_colors: int | None = None) -> dict:
     # horizontal symmetry (informational)
     same = sum(1 for x, y in opaque if g[y][s.width - 1 - x] == g[y][x])
     rep["mirror_symmetry"] = round(same / len(opaque), 2)
+    # located problems, the same verdict the Aseprite window's validate gives (lint.py)
+    rep["lint"] = lint(s)
     return rep

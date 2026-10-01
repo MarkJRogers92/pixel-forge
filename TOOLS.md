@@ -26,15 +26,23 @@ it fixes a measured weakness of Pixel Forge on our own assets. Target machine: M
 | Cleanup must never delete intended thin cords, sparks, holes | Forge packet Task 4 | `polish.py` + tests |
 | Grid detection verified before use (native art is never re-gridded) | Forge packet | `cleanup.verify_grid` |
 
+## Adopted 2026-10-01: the merged generator
+
+| Tool | License | Role | Why |
+|---|---|---|---|
+| Aseprite AI Artist (with-pebbly) | MIT | Companion MCP for live edits in Aseprite; its `validate` checks ported into `lint.py` | Forge generated well but was hard to touch up; Aseprite is the stronger editor and its live look/validate loop fixed a sprite PixelLab could not draw (the toppled rack). Forge talks to Aseprite through its own batch mode, so it does not depend on the extension. |
+| PixelLab (pixflux REST) | service terms | Optional draft route (`--route pixellab`) | Strongest at characters and some props; now competes in Forge's judging instead of replacing it. Costs a generation per draft. |
+| Retro Diffusion (v2 REST) | service terms | Optional draft route (`--route rd`) | Good painterly game assets; `rd_fast` is asked at 2x (min 64) since it rejects tiny sizes. About $0.02 per draft. |
+
 ## Evaluated, not adopted (yet)
 
 | Tool | License | Result |
 |---|---|---|
 | PixelOE 1.0.0 (legacy numpy/OpenCV path) | Apache-2.0 | Tested on the same GPT painting as our converter: slightly cleaner neon trims and kept coin lights, but lost the same small details (screen crack). The hybrid redraws from the conversion anyway, so the gain mostly disappears. Would add OpenCV (~100 MB; full package with torch is ~900 MB). Revisit if a pixelize-only workflow needs it. |
 | Pixel Art Lab | MIT | Per-pixel `draw_pixels` via Aseprite + OpenRouter. Our shape/material program is a higher-level design; its restore-point and budget ideas are covered by keep-best / bounded rounds. |
-| Aseprite MCP bridges (diivi, willibrandon, rkdfx, sloplink) | MIT (Aseprite EULA separate) | Not needed: the AI panel lives in our own editor. Aseprite is installed and can still be used for `.aseprite` export later. |
+| Aseprite MCP bridges (diivi, willibrandon, rkdfx, sloplink) | MIT (Aseprite EULA separate) | Superseded by Aseprite AI Artist (below). |
 | Retro Diffusion pixel-art-fixer, Sprite Fusion Pixel Snapper | MIT | Our grid detection recovers 28/30 degraded test cases and rejects 139/140 native game sprites correctly. Revisit if real inputs fail. |
 | Pixelorama | MIT | Stronger editor, but Godot/GDScript with no headless API: much harder to wire to the AI loop than Piskel. |
-| PixelLab, Retro Diffusion hosted, ComfyUI lane | service terms | Out of scope by choice: Pixel Forge's artist is Claude/GPT. |
+| ComfyUI lane | various | Out of scope: PixelLab and Retro Diffusion cover hosted generation (routes, below). |
 | Tiled/LDtk, TilePipe, Laigter, texture packers, Blender/Blockbench | various | Not needed until tiles, lighting maps, atlases or 3D-based sprites are on the roadmap. |
 | Model training (AI Toolkit, kohya_ss) | various | Deferred: needs a rights-cleared dataset. PixelLab outputs cannot be used as training data (their terms). |

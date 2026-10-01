@@ -6,6 +6,9 @@
   render program.json                render a sprite program (when an agent draws directly)
   cleanup image.png                  turn any image into true pixel art
   qa sprite.png                      automated checks
+  lint sprite.png                    located pixel-art problems (same checks as Aseprite's validate)
+  open LIBRARY_ID [--editor E]       open a result in aseprite (layered), piskel, or both
+  from-aseprite DOC.aseprite         an edited document back into the library, checked
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -19,7 +22,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import artist, dsl, library, profiles, projects, qa
+from . import artist, dsl, editors, library, lint, profiles, projects, qa
+from . import routes as route_mod
 from .cleanup import CleanupOptions, cleanup, load_image
 from .sprite import Sprite, preview_image
 
@@ -32,7 +36,8 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
          log=print, base: Sprite | None = None, refiner: str | None = None,
          polish: bool = True, use_references: bool = True, keep_steps: bool = False,
          retouch_only: bool = False, candidates: int = 1, checks: list[str] | None = None,
-         refs: list[str] | None = None) -> dict:
+         refs: list[str] | None = None, routes: list[str] | None = None,
+         open_in: str | None = None) -> dict:
     """The automatic pipeline shared by the CLI and the MCP server."""
     if project and not profile:
         profile = projects.get(project)["id"]
@@ -74,8 +79,11 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
     ref_list = [Path(x).expanduser() for x in (refs or [])]
     if use_references:
         ref_list += [Path(x) for x in (prof or {}).get("reference_paths", [])][:max(0, 3 - len(ref_list))]
+    # external routes (PixelLab, Retro Diffusion) paint drafts that compete in the judging
+    external = route_mod.run_routes(routes or [], prompt, w, h, prof, d / "work", log) if routes else []
     req = artist.Request(edit_prompt, w, h, prof, rounds, base, ref_list,
-                         polish=polish, retouch=retouch, candidates=candidates, checks=checks or [])
+                         polish=polish, retouch=retouch, candidates=candidates, checks=checks or [],
+                         external=external)
     backend = artist.make_backend(artist_name, model)
     log(f"artist: {backend.name}; saving to library/{item_id}")
     steps = artist.generate(req, backend, d / "work", log)
@@ -90,6 +98,12 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
               "review_notes": [s.notes for s in steps if s.notes]}
     if keep_steps:
         result["_steps"] = steps
+    if open_in:
+        try:
+            result["opened"] = editors.open_item(item_id, open_in)
+        except Exception as e:  # the art is saved either way; say why the editor did not open
+            log(f"could not open in {open_in}: {e}")
+            result["open_error"] = str(e)
     if out:
         dst = Path(out).expanduser()
         if dst.suffix.lower() != ".png":
@@ -130,6 +144,10 @@ def main(argv=None):
                        help="extra reference image the artist should look at (repeatable; shown first)")
         g.add_argument("--check", action="append", default=[],
                        help="acceptance requirement the reviews and judge must verify (repeatable)")
+        g.add_argument("--route", action="append", default=[], choices=sorted(route_mod.ROUTES),
+                       help="also get a draft from pixellab or rd (Retro Diffusion); spends credits (repeatable)")
+        g.add_argument("--open", dest="open_in", choices=editors.EDITORS,
+                       help="open the result: aseprite (layered document), piskel, or both")
 
     r = sub.add_parser("render")
     r.add_argument("program"); r.add_argument("-o", "--out"); r.add_argument("--base")
@@ -145,6 +163,11 @@ def main(argv=None):
                    help="illustration keeps contrasting details when shrinking GPT images")
 
     q = sub.add_parser("qa"); q.add_argument("image")
+    li = sub.add_parser("lint"); li.add_argument("image")
+    op = sub.add_parser("open"); op.add_argument("item", help="library id")
+    op.add_argument("--editor", default="aseprite", choices=editors.EDITORS)
+    fa = sub.add_parser("from-aseprite"); fa.add_argument("document")
+    fa.add_argument("-o", "--out"); fa.add_argument("--polish", action="store_true"); fa.add_argument("--name")
 
     p = sub.add_parser("project")
     psub = p.add_subparsers(dest="pcmd", required=True)
@@ -170,7 +193,8 @@ def main(argv=None):
     elif a.cmd in ("make", "generate"):
         dump(make(a.prompt, a.width, a.height, a.profile, a.project, a.rounds, a.artist, a.model,
                   a.start, a.out, log=lambda m: print(m, file=sys.stderr), refiner=a.refiner,
-                  polish=not a.no_polish, candidates=a.candidates, checks=a.check, refs=a.ref))
+                  polish=not a.no_polish, candidates=a.candidates, checks=a.check, refs=a.ref,
+                  routes=a.route, open_in=a.open_in))
     elif a.cmd == "render":
         base = Sprite.from_image(load_image(Path(a.base).read_bytes())) if a.base else None
         res = dsl.render(json.loads(Path(a.program).read_text()), base)
@@ -190,6 +214,13 @@ def main(argv=None):
         dump({"png": str(out), "report": rep.__dict__, "qa": qa.check(sprite)})
     elif a.cmd == "qa":
         dump(qa.check(Sprite.from_image(load_image(Path(a.image).read_bytes()))))
+    elif a.cmd == "lint":
+        from PIL import Image
+        dump(lint.lint_image(Image.open(a.image)))
+    elif a.cmd == "open":
+        dump(editors.open_item(a.item, a.editor))
+    elif a.cmd == "from-aseprite":
+        dump(editors.import_from_aseprite(Path(a.document), a.out, polish=a.polish, name=a.name))
     elif a.cmd == "project":
         if a.pcmd == "add":
             dump(projects.register(a.path, a.name, a.id))

@@ -53,6 +53,34 @@ colors and binary transparency. Review at 1x: a detailed painting can still need
 pixel redraw, especially below 64 pixels. Background removal handles existing alpha
 or a flat border color; the report warns when it leaves the source opaque.
 
+### Routes and editors (the merged generator, 2026-10-01)
+Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
+
+```bash
+# Claude drafts + a Retro Diffusion draft + a PixelLab draft, judged together; open in Aseprite
+./forge.sh make "red 1990s cola machine" --project dead-mall -W 32 -H 48 \
+    --route rd --route pixellab --open aseprite
+./forge.sh open <library-id> --editor both        # layered .aseprite and/or the Piskel editor
+./forge.sh from-aseprite ~/code/pixel-forge/library/<id>/sprite.aseprite -o ~/Desktop/art/final.png
+./forge.sh lint sprite.png                         # located problems + a 0-100 score
+```
+
+- **Routes** (`--route pixellab|rd`): PixelLab (pixflux) and Retro Diffusion
+  (`rd_fast__game_asset`) each paint a draft, it is converted to true pixel art at the
+  target size, and it competes with the artist's drafts in the judging. A winning route
+  draft is then reviewed and polished like any other. Keys: `PIXELLAB_API_KEY`,
+  `RETRODIFFUSION_API_KEY` (environment or `~/.zshrc`). Each route call spends credits.
+- **Aseprite** (`--open aseprite`, `forge open`): a layered `sprite.aseprite` in the
+  library item (final on top, then review steps, drafts and route drafts as hidden
+  layers) opens in your Aseprite window. With the Aseprite AI Artist extension attached
+  an agent can keep editing it live. `from-aseprite` flattens your visible layers back
+  into a new, checked library version.
+- **Piskel** (`--open piskel`): the browser editor opens with the result loaded
+  (`http://127.0.0.1:9002/?open=<id>`); the server starts if it is not running.
+- **Lint** (`forge lint`, `forge_lint`, and in every QA report): stray pixels, gaps in
+  the outline, banding, soft alpha and near-duplicate colours, ported from Aseprite AI
+  Artist's `validate` so both canvases give the same verdict.
+
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark
 outer outline, while keeping deliberate details: glints, rows of lights, multi-shade lights,
@@ -63,9 +91,10 @@ outer outline, while keeping deliberate details: glints, rows of lights, multi-s
 claude mcp add pixel-forge -s user -- ~/code/pixel-forge/forge.sh mcp
 codex mcp add pixel-forge -- ~/code/pixel-forge/forge.sh mcp
 ```
-Tools: `forge_make` (automatic), `forge_guide` + `forge_render` (the calling agent
-draws itself and sees the image), `forge_pixelize`, `forge_add_project`,
-`forge_learn_style`, `forge_project_assets`, `forge_status`.
+Tools: `forge_make` (automatic; `routes`, `open_in`), `forge_guide` + `forge_render` (the
+calling agent draws itself and sees the image), `forge_pixelize`, `forge_open`,
+`forge_from_aseprite`, `forge_lint`, `forge_add_project`, `forge_learn_style`,
+`forge_project_assets`, `forge_status` (also reports route keys and the Aseprite path).
 
 ## Artists
 | id | how | needs |
@@ -84,6 +113,10 @@ forge/artist.py        draft → render → look → fix loop; claude / codex / 
 forge/cleanup.py       image → pixel art (grid detection + verification, background, palette)
 forge/polish.py        automatic cleanup (noise, speckle, outline) that keeps intended details
 forge/qa.py            measurable checks (colours, stray pixels, outline, cropping, fragments)
+forge/lint.py          located problems + score (ported from Aseprite AI Artist's validate)
+forge/routes.py        PixelLab and Retro Diffusion draft routes
+forge/aseprite.py      layered .aseprite documents, flatten back, open in Aseprite (batch mode)
+forge/editors.py       open a result in Aseprite and/or Piskel; import an edited document
 forge/projects.py      pull art + learn style from existing project folders (read-only)
 forge/server.py        local HTTP server for the editor panel
 forge/mcp_server.py    MCP tools

@@ -90,8 +90,8 @@ tools to the original eight. See `WORKFLOW-MCP.md` for the exact tool list,
 request sequence and separately approved persistent update.
 
 The five-tool read-only server and eight-tool direct-authoring server remain
-restricted. Dot's current tunnel runs the latter, so these new provider tools
-are **not directly available through that tunnel**. Until a separately approved
-connection update, use delegated Mac execution or the existing local full MCP,
-and return the review sheet to Dot. No credentials, runtime, plugin permissions
-or tunnel configuration are changed by installing this workflow.
+restricted. Mark approved the persistent update and the existing tunnel now runs the narrow
+13-tool workflow mode. Native health and configured tool discovery pass. The
+installed plugin still needs metadata Refresh and Dot must independently verify
+its tool discovery. See `WORKFLOW-MCP.md`. Installing the code alone never
+changes credentials or connection permissions.

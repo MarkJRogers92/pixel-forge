@@ -1,6 +1,6 @@
 # Narrow workflow connection
 
-Prepared launch, requiring action-time approval before replacing an existing tunnel:
+Current live launch, activated after Mark explicitly approved the exact expansion:
 
 ```bash
 /Users/markrogers/code/pixel-forge/forge.sh mcp-workflow --enable-authoring --enable-workflow
@@ -93,5 +93,7 @@ command and refresh again to roll back; retain all assets and authentication.
 - Existing connection observation: `artifacts/workflow-current-connection.json`.
 - Free existing-reference job/dedup test: `artifacts/workflow-connection-smoke.json`.
 
-Preparation does not itself modify the live connection; activation must be
-confirmed by native runtime evidence and actual plugin/Dot discovery.
+The live switch is confirmed by `artifacts/workflow-live-connection.json`: healthy,
+ready, credential file unchanged and all other profile configuration unchanged.
+`artifacts/workflow-live-tools.json` verifies configured discovery. Plugin Refresh
+and parent Dot discovery remain unverified until performed in the parent chat.

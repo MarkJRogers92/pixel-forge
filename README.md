@@ -107,6 +107,12 @@ projects, launch editors, or read route credentials. Project reads are limited t
 the registered `dead-mall` art folder; library previews show the final `sprite.png`.
 See [READONLY-MCP.md](READONLY-MCP.md) for setup and the private tunnel approval boundary.
 
+For bounded direct drawing without model calls, `./forge.sh mcp-authoring` adds
+capabilities and two disabled write tools. Local authoring requires the explicit
+`--enable-authoring` launch flag. Each render or edit creates a new library item;
+source art is preserved. See [DIRECT-AUTHORING.md](DIRECT-AUTHORING.md) for the
+strict JSON contract, fixture and the separate approval before remote write access.
+
 ## Artists
 | id | how | needs |
 |---|---|---|

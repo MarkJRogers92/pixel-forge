@@ -3,6 +3,14 @@
 Written 2026-10-01 by Claude Code for Mark. Read this once; `AGENTS.md` (same
 folder) is the day-to-day manual and Codex loads it automatically.
 
+Current preferred workflow: `forge.sh prepare` makes a GPT pixel-art reference,
+runs the free RD neural fixer, performs conservative cleanup/QA and returns a
+pending Dot visual-review sheet. Optional `forge.sh repair` makes one Claude Opus
+patch in a new item; review again, then open layered Aseprite and import edits for
+final QA. See `FIXER-WORKFLOW.md`. The existing `make` pipeline described below
+remains available. Provider tools are on local full MCP only; the restricted Dot
+authoring tunnel has not been expanded.
+
 ## What Pixel Forge is
 
 A local pixel-art generator at `~/code/pixel-forge` (Python, MIT-style own code;

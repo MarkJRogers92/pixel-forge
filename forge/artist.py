@@ -570,7 +570,7 @@ GENERATED_DIR = Path.home() / ".codex" / "generated_images"
 
 def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | None,
                          workdir: Path, log: Callable[[str], None] = print,
-                         timeout: int = 900) -> Path:
+                         timeout: int = 900, *, strict_output: bool = False) -> Path:
     """Ask Codex's image tool (ChatGPT login) for a pixel-art painting; return the PNG path."""
     workdir.mkdir(parents=True, exist_ok=True)
     style = (profile or {}).get("style", "")
@@ -587,7 +587,8 @@ def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | N
         f"The whole object is visible and centred with a small margin. Background: plain flat "
         f"solid magenta (#ff00ff) or transparent. No text, no letters, no logos, no scenery, "
         f"no shadow on the ground.\n"
-        f"After the image is generated, do not edit, inspect or regenerate it. Reply only DONE.")
+        f"After the image is generated, do not edit, inspect or regenerate it. "
+        + ("Reply with its exact absolute PNG file path and DONE." if strict_output else "Reply only DONE."))
     exe = shutil.which("codex") or str(Path.home() / ".local/bin/codex")
     started = time.time()
     log("GPT is painting the base image…")
@@ -602,11 +603,21 @@ def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | N
             raise ArtistError("GPT image generation timed out")
     proc = paint(None)
     said = (proc.stderr or "") + (proc.stdout or "")
-    if _REFUSED in said:
+    if _REFUSED in said and not strict_output:
         log(f"codex refused its default model; retrying with {_codex_fallback()}")
         proc = paint(_codex_fallback())
         said = (proc.stderr or "") + (proc.stdout or "")
-    new = [p for p in GENERATED_DIR.glob("*/*.png") if p.stat().st_mtime >= started - 2]
+    if strict_output:
+        if proc.returncode != 0:
+            raise ArtistError("GPT image generation failed; no automatic retry")
+        pattern = re.escape(str(GENERATED_DIR)) + r"/[^\s\"'<>`]+\.png"
+        reported = {Path(path) for path in re.findall(pattern, said)}
+        new = [p for p in reported if p.is_file() and not p.is_symlink()
+               and GENERATED_DIR.resolve() in p.resolve().parents and p.stat().st_mtime >= started]
+        if len(new) != 1:
+            raise ArtistError("GPT did not report one unambiguous new image output path; no automatic retry")
+    else:
+        new = [p for p in GENERATED_DIR.glob("*/*.png") if p.stat().st_mtime >= started - 2]
     if not new:
         errors = [line for line in said.splitlines() if "ERROR" in line or "error" in line.lower()]
         raise ArtistError("GPT did not produce an image: " + (errors[-1][:300] if errors else

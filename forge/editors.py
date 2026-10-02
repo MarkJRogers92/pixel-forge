@@ -35,6 +35,13 @@ def document_layers(item_id: str) -> list[tuple[str, Path, bool]]:
     work = d / "work"
     layers = [("final", d / "sprite.png", True)]
     if work.exists():
+        # Reference copies are already scaled to the sprite canvas. Never include
+        # the original large GPT painting, which would enlarge the whole document.
+        for name, filename in (("Claude repair", "repair.png"), ("before repair", "repair_base.png"),
+                               ("forge cleanup", "cleaned.png"), ("RD neural fixer", "rd_neural.png"),
+                               ("GPT reference (scaled)", "gpt_reference.png")):
+            if (work / filename).exists():
+                layers.append((name, work / filename, False))
         steps = sorted((p for p in work.glob("step_*.png") if p.stem != "step_0"), key=_key, reverse=True)
         layers += [(f"review {_key(p)[0]}", p, False) for p in steps]
         if (work / "combined.png").exists():

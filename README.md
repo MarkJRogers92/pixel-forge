@@ -1,10 +1,9 @@
 # Pixel Forge
 
-A local pixel-art tool where **Claude or GPT is the artist**. No PixelLab, no
-ComfyUI, no image model: the AI writes a small drawing program (palette, shapes,
-shading, outline, hand-placed pixels), a deterministic renderer turns it into exact
-pixels, and the AI then *looks at the render* and fixes it. Everything is real,
-editable pixel art from the first step.
+A local pixel-art tool for DEAD MALL. The preferred workflow is **GPT pixel-art
+reference → RD neural fixer → conservative cleanup/QA → Dot visual review →
+Aseprite**. Claude Opus can make a focused repair when needed. The existing
+automatic generator and direct pixel drawing tools remain available.
 
 Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the editor.
 
@@ -22,7 +21,21 @@ Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the edit
 | **Pixelize** | Turn any image (AI output, photo, screenshot, blurry upscale) into true pixel art: detects fake pixel grids, removes flat backgrounds, reduces colours or snaps to a style palette. |
 | **Assets** | Browse an existing project's sprites (read-only) and open copies to edit or refine. **Learn style** builds a style profile (palette, sizes, outline habit, reference sprites) from that project. |
 
-## Fully automatic (for you, Claude Code, or Codex)
+## Preferred image workflow
+
+```bash
+./forge.sh prepare "cream 1994 mall payphone with a frayed cord" --project dead-mall -W 32 -H 48 \
+  --check "frayed cord visible at 1x" --check "clean dark outline, no lettering"
+```
+
+This generates one GPT reference, reconstructs it with the free RD neural fixer,
+then saves the original, fixer output, cleaned sprite, QA and a review sheet.
+It returns `awaiting_visual_review`: Dot inspects the sheet at 1x/2x before
+requesting a repair or opening Aseprite. Claude is not called by `prepare`.
+Use `--input reference.png` to reuse an image and skip GPT generation.
+See [FIXER-WORKFLOW.md](FIXER-WORKFLOW.md) for repair, Aseprite and connection details.
+
+## Existing automatic generator (for you, Claude Code, or Codex)
 
 ```bash
 ./forge.sh make "cream 1994 mall payphone with a frayed cord" --project dead-mall -W 32 -H 48 --out ~/Desktop/art
@@ -95,7 +108,9 @@ outer outline, while keeping deliberate details: glints, rows of lights, multi-s
 claude mcp add pixel-forge -s user -- ~/code/pixel-forge/forge.sh mcp
 codex mcp add pixel-forge -- ~/code/pixel-forge/forge.sh mcp
 ```
-Tools: `forge_make` (automatic; `routes`, `open_in`), `forge_guide` + `forge_render` (the
+Tools: `forge_prepare` (preferred; returns the visual review sheet), `forge_repair`
+(one optional Claude Opus patch), `forge_make` (automatic; `routes`, `open_in`),
+`forge_guide` + `forge_render` (the
 calling agent draws itself and sees the image), `forge_pixelize`, `forge_open`,
 `forge_from_aseprite`, `forge_lint`, `forge_add_project`, `forge_learn_style`,
 `forge_project_assets`, `forge_status` (also reports route keys and the Aseprite path).
@@ -132,6 +147,8 @@ forge/polish.py        automatic cleanup (noise, speckle, outline) that keeps in
 forge/qa.py            measurable checks (colours, stray pixels, outline, cropping, fragments)
 forge/lint.py          located problems + score (ported from Aseprite AI Artist's validate)
 forge/routes.py        PixelLab and Retro Diffusion draft routes
+forge/rd_fixer.py      free neural reconstruction with bounded, alpha-preserving uploads
+forge/fixer_workflow.py GPT reference → fixer → QA/review handoff; optional targeted repair
 forge/aseprite.py      layered .aseprite documents, flatten back, open in Aseprite (batch mode)
 forge/editors.py       open a result in Aseprite and/or Piskel; import an edited document
 forge/projects.py      pull art + learn style from existing project folders (read-only)
@@ -148,8 +165,8 @@ library/               every result with its programs, review notes and QA (git-
 ```
 
 ## Asset workflow
-The step-by-step process for new assets (checklist → Claude and GPT-hybrid routes →
-compare at 1x → targeted fixes → combine favourites → finals) is in `WORKFLOW.md`.
+The step-by-step process for new assets (checklist → GPT/fixer → Dot review →
+optional repair → Aseprite → final QA) is in `WORKFLOW.md`.
 In Claude Code, ask for a new asset or run `/pixel-asset` to follow it automatically.
 
 ## Tool decisions

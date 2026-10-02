@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from mcp.server.mcpserver import Image, MCPServer
+from mcp.types import ToolAnnotations
 
 from . import artist, dsl, library, profiles, projects, qa
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -22,7 +23,11 @@ from .sprite import Sprite, preview_image
 server = MCPServer(
     "pixel-forge",
     instructions=(
-        "Pixel Forge creates real pixel art. Use forge_make for a fully automatic sprite from a "
+        "Pixel Forge creates real pixel art. Preferred: forge_prepare makes one GPT reference, "
+        "uses the free RD neural fixer, then cleanup/QA and a review sheet. Inspect it yourself at "
+        "1x/2x; visual review is not automatic. forge_repair optionally requests ONE Claude Opus "
+        "pixel patch, creating a new item for another review. Then use forge_open for Aseprite. "
+        "Use forge_make for a fully automatic sprite from a "
         "description (optionally in the style of a registered project), or read forge_guide and "
         "draw yourself with forge_render. Use forge_pixelize to turn any image into pixel art, "
         "and forge_add_project / forge_learn_style to pull style and assets from an existing game. "
@@ -89,6 +94,48 @@ def forge_make(prompt: str, width: int | None = None, height: int | None = None,
     result["log"] = log
     return [json.dumps(result, default=str),
             _preview(Sprite.from_image(load_image(Path(result["png"]).read_bytes())))]
+
+
+WORKFLOW_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                 idempotent_hint=False, open_world_hint=True)
+
+
+def _workflow_response(result: dict, log: list[str]) -> list:
+    result["log"] = log
+    return [json.dumps(result, default=str), Image(data=Path(result["review"]["sheet"]).read_bytes(), format="png")]
+
+
+@server.tool(description=(
+    "Preferred workflow: one GPT pixel-art-style reference -> free RD neural fixer at target size "
+    "-> conservative cleanup/QA -> review sheet at 1x/2x. Uses GPT allowance and the existing RD "
+    "key; fixer spends no RD balance. input_png reuses an existing reference and skips GPT. "
+    "No Claude, judging, paid RD generation or automatic retries. Returns awaiting_visual_review: "
+    "the calling agent must visually review requirements, then optionally forge_repair and "
+    "review again, then forge_open in Aseprite. out copies a candidate without overwriting; "
+    "open_in opens it for inspection, without marking it approved."), annotations=WORKFLOW_WRITE)
+def forge_prepare(prompt: str, width: int | None = None, height: int | None = None,
+                  profile: str | None = None, project: str | None = None,
+                  input_png: str | None = None, checks: list[str] | None = None,
+                  out: str | None = None, open_in: str | None = None) -> list:
+    from .fixer_workflow import prepare
+    log = []
+    return _workflow_response(prepare(prompt, width, height, profile, project, input_png,
+                                      checks, out, open_in, log.append), log)
+
+
+@server.tool(description=(
+    "Optional explicit repair after visual review: ONE Claude Opus call makes a targeted patch "
+    "on a library item. Uses Claude subscription allowance. Default changed-pixel budget: 10% "
+    "of the canvas. Rejects redraws, resizing, palette-wide recolouring, invalid operations and "
+    "over-budget edits. Preserves the source and saves a new item, QA and review sheet. "
+    "Review it yourself again before Aseprite/final export; no additional fixer/generation calls."),
+    annotations=WORKFLOW_WRITE)
+def forge_repair(library_id: str, instructions: str, max_changed_pixels: int | None = None,
+                 out: str | None = None, open_in: str | None = None) -> list:
+    from .fixer_workflow import repair
+    log = []
+    return _workflow_response(repair(library_id, instructions, max_changed_pixels, out,
+                                     open_in, log.append), log)
 
 
 @server.tool(description=(

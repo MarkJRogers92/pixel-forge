@@ -128,6 +128,12 @@ capabilities and two disabled write tools. Local authoring requires the explicit
 source art is preserved. See [DIRECT-AUTHORING.md](DIRECT-AUTHORING.md) for the
 strict JSON contract, fixture and the separate approval before remote write access.
 
+For the narrow asynchronous image workflow plus direct drawing, use
+`./forge.sh mcp-workflow --enable-authoring --enable-workflow`. It preserves
+the eight direct tools and adds preparation, optional Opus repair, progress,
+and Aseprite open/import. See [WORKFLOW-MCP.md](WORKFLOW-MCP.md) before updating
+a persistent connection.
+
 ## Artists
 | id | how | needs |
 |---|---|---|

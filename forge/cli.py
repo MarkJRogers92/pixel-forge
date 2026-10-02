@@ -131,6 +131,9 @@ def main(argv=None):
     sub.add_parser("mcp-readonly")
     direct = sub.add_parser("mcp-authoring")
     direct.add_argument("--enable-authoring", action="store_true")
+    workflow = sub.add_parser("mcp-workflow")
+    workflow.add_argument("--enable-authoring", action="store_true")
+    workflow.add_argument("--enable-workflow", action="store_true")
     sub.add_parser("guide")
     sub.add_parser("profiles")
 
@@ -216,6 +219,10 @@ def main(argv=None):
     elif a.cmd == "mcp-authoring":
         from .authoring_mcp import main as mcp_main
         mcp_main(["--enable-authoring"] if a.enable_authoring else [])
+    elif a.cmd == "mcp-workflow":
+        from .workflow_mcp import main as mcp_main
+        mcp_main((["--enable-authoring"] if a.enable_authoring else []) +
+                 (["--enable-workflow"] if a.enable_workflow else []))
     elif a.cmd == "guide":
         print(artist.GUIDE)
     elif a.cmd == "profiles":

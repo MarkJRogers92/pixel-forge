@@ -84,6 +84,11 @@ The local CLI and unrestricted `forge.sh mcp` expose `forge_prepare` and
 Both tools declare non-read-only, non-idempotent, open-world behavior.
 The existing `make` pipeline remains available for Claude/GPT competitions.
 
+For narrow direct use, `forge.sh mcp-workflow --enable-authoring --enable-workflow`
+adds asynchronous, deduplicated preparation/repair and Library-only Aseprite
+tools to the original eight. See `WORKFLOW-MCP.md` for the exact tool list,
+request sequence and separately approved persistent update.
+
 The five-tool read-only server and eight-tool direct-authoring server remain
 restricted. Dot's current tunnel runs the latter, so these new provider tools
 are **not directly available through that tunnel**. Until a separately approved

@@ -96,7 +96,8 @@ competition workflow below is available when an asset needs alternative drafts.
 - Don't edit `editor/` (Piskel fork, its own git repo) unless the task is the editor.
 - Tests: `.venv/bin/python -m pytest -q tests` (46 tests; one does a real Aseprite
   round trip and is skipped if Aseprite is missing). Run them after code changes.
-- Commit Pixel Forge changes to its local git (no remote).
+- Commit Pixel Forge changes locally. Never push or merge unless Mark explicitly
+  authorizes that action; authorization applies only to the targets he names.
 
 ## Environment and pitfalls
 

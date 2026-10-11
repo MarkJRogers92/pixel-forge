@@ -63,10 +63,15 @@ One `make` run:
 
 ## Current state (2026-10-01)
 
-- **Code**: local git only (no remote), on `main`. Latest commits: the merged
-  generator (routes, Aseprite, lint), the Codex model fallback, combine, and the
-  combine fix that keeps judge-named features consistent with the checks.
+- **Code (as of 2026-10-01)**: local git only (no remote), on `main`. Latest
+  commits: the merged generator (routes, Aseprite, lint), the Codex model
+  fallback, combine, and the combine fix that keeps judge-named features
+  consistent with the checks.
   Tests: `.venv/bin/python -m pytest -q tests` → 46 passed.
+- **Publication update (2026-10-11)**: Mark explicitly authorized public GitHub
+  publication of `MarkJRogers92/pixel-forge` and its custom `editor` submodule
+  at `MarkJRogers92/pixel-forge-editor`. The earlier no-remote status above is
+  historical; publish only to these approved targets.
 - **Style profile**: `profiles/dead-mall.json` (32-colour palette, ~32x32 sprites,
   selective outlines, 4 reference sprites), learned from the game's
   `public/assets/neon` (project `dead-mall` in `projects.json`, now pointing at

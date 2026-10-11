@@ -13,6 +13,32 @@ Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the edit
 ./forge.sh serve          # http://127.0.0.1:9002, then click the "AI" button on the right
 ```
 
+## Fresh clone setup
+
+Clone the editor submodule with the main repository, then install the local
+Python and browser-editor dependencies:
+
+```bash
+git clone --recurse-submodules https://github.com/MarkJRogers92/pixel-forge.git
+cd pixel-forge
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+# Node.js 22.12 or newer
+(cd editor && PUPPETEER_SKIP_DOWNLOAD=true npm ci && npm run build)
+./forge.sh project add ./profiles/refs/dead-mall --id dead-mall --name "DEAD MALL"
+./forge.sh serve
+```
+
+The project registration is local and ignored by Git. It lets browser Create
+use the included DEAD MALL profile and reference sprites; if the game assets are
+available, register their `public/assets/neon` folder instead. Browser Create
+uses your locally signed-in Codex CLI and `RETRODIFFUSION_API_KEY` for the GPT
+reference and neural-fixer steps. Configure credentials on your machine; never
+put them in this repository. Claude, PixelLab, and Aseprite are optional for
+their respective workflows. `projects.json`, generated library art, and local
+credentials are not included in Git.
+
 ### The AI panel
 | Tab | What it does |
 |---|---|

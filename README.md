@@ -16,7 +16,7 @@ Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the edit
 ### The AI panel
 | Tab | What it does |
 |---|---|
-| **Create** | Describe a sprite, pick size, style, review rounds and artist (Claude or GPT). The result opens as a new sprite or a new layer. Each review round is shown as a thumbnail you can go back to. |
+| **Create** | Defaults to GPT reference → free RD neural fixer → QA and visual review. Stage previews stay crisp at pixel scale; refresh reattaches to the same request. Cancel is available while work runs. Your current canvas stays untouched during generation; choose **Open final as new sprite** to load the result when ready. Switch to **Competing drafts** for the older competition workflow. |
 | **Refine** | "Make the cord more frayed": the artist edits the current frame; the result is added as a new layer, so your original stays. |
 | **Pixelize** | Turn any image (AI output, photo, screenshot, blurry upscale) into true pixel art: detects fake pixel grids, removes flat backgrounds, reduces colours or snaps to a style palette. |
 | **Assets** | Browse an existing project's sprites (read-only) and open copies to edit or refine. **Learn style** builds a style profile (palette, sizes, outline habit, reference sprites) from that project. |
@@ -34,6 +34,11 @@ It returns `awaiting_visual_review`: Dot inspects the sheet at 1x/2x before
 requesting a repair or opening Aseprite. Claude is not called by `prepare`.
 Use `--input reference.png` to reuse an image and skip GPT generation.
 See [FIXER-WORKFLOW.md](FIXER-WORKFLOW.md) for repair, Aseprite and connection details.
+The AI panel's Create tab uses this same workflow by default. Cancelling stops
+local work when possible, but cannot refund provider credits already spent.
+The older competing-drafts mode remains available. For an optional guided
+PixelLab style route and credential-free dry-run trial, see
+[PIXELLAB-STYLE.md](PIXELLAB-STYLE.md).
 
 ## Existing automatic generator (for you, Claude Code, or Codex)
 

@@ -21,6 +21,43 @@ EDITOR = Path(__file__).resolve().parent.parent / "editor" / "dest" / "prod"
 MAX_BODY = 30 * 1024 * 1024
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
+WORKFLOW_JOBS = None
+
+
+def workflow_jobs():
+    global WORKFLOW_JOBS
+    if WORKFLOW_JOBS is None:
+        from . import readonly_mcp
+        from .workflow_jobs import WorkflowJobs
+        # The browser already exposes generation; the fixed preferred workflow
+        # uses the same durable registry as MCP and accepts no caller paths.
+        WORKFLOW_JOBS = WorkflowJobs(readonly_mcp.store, enabled=True)
+    return WORKFLOW_JOBS
+
+
+def workflow_response(status):
+    """Shape a durable job for the local browser client without exposing paths."""
+    request_id = status.get("request_id", "")
+    result = status.get("result")
+    if isinstance(result, dict):
+        library_id = result.get("library_id")
+        previews = status.get("previews", [])
+        by_asset = {entry["png"].rsplit("/", 1)[-1]: entry["png"] for entry in previews}
+        result = {**result,
+            "png": by_asset.get("sprite.png"),
+            "review_png": by_asset.get("review.png"),
+            "steps": [entry for entry in previews if entry["png"].rsplit("/", 1)[-1]
+                      not in ("sprite.png", "review.png")],
+        }
+        status = {**status, "result": result, "library_id": status.get("library_id", library_id)}
+    if status.get("state") in ("cancelling", "cancelled"):
+        note = "Cancellation does not guarantee a refund of provider charges or credits already incurred."
+        status["cancellation_note"] = note
+        status["log"] = (list(status.get("log", [])) + [note])[-32:]
+    status.setdefault("stage", "")
+    status.setdefault("log", [])
+    status.setdefault("previews", [])
+    return status
 
 
 def decode_data_url(url: str) -> bytes:
@@ -135,7 +172,23 @@ class Handler(SimpleHTTPRequestHandler):
             if path.startswith("/api/jobs/"):
                 job = JOBS.get(path.rsplit("/", 1)[-1])
                 return self.send_json(job or {"status": "missing"}, 200 if job else 404)
+            if path.startswith("/api/workflows/"):
+                parts = path.split("/")
+                if len(parts) == 6 and parts[4] == "preview":
+                    data = workflow_jobs().preview(parts[3], parts[5])
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return self.wfile.write(data)
+                if len(parts) == 4:
+                    return self.send_json(workflow_response(workflow_jobs().status(parts[3])))
         except Exception as e:
+            if path.startswith("/api/workflows/"):
+                from .workflow_jobs import JobError
+                code = e.code if isinstance(e, JobError) else "INVALID_REQUEST"
+                return self.send_json({"error": {"code": code}}, 404 if code == "JOB_NOT_FOUND" else 400)
             return self.send_json({"error": str(e)}, 400)
         self.send_json({"error": "not found"}, 404)
 
@@ -151,6 +204,18 @@ class Handler(SimpleHTTPRequestHandler):
                     JOBS[job_id] = {"id": job_id, "status": "running", "log": [], "result": None}
                 threading.Thread(target=run_generate, args=(job_id, body), daemon=True).start()
                 return self.send_json({"job": job_id})
+
+            if path == "/api/workflows/prepare":
+                from .authoring_schema import validate_model
+                from .workflow_mcp import Prepare
+                args = validate_model(Prepare, body).model_dump()
+                status = workflow_jobs().submit("forge_prepare", args)
+                return self.send_json(workflow_response(status))
+            if path.startswith("/api/workflows/") and path.endswith("/cancel"):
+                parts = path.split("/")
+                if len(parts) == 5 and parts[4] == "cancel":
+                    status = workflow_jobs().cancel(parts[3])
+                    return self.send_json(workflow_response(status))
 
             if path == "/api/cleanup":
                 img = load_image(decode_data_url(body["image"]))
@@ -182,6 +247,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"png": res.sprite.to_data_url(), "errors": res.errors,
                                        "qa": qa.check(res.sprite)})
         except Exception as e:
+            if path.startswith("/api/workflows/"):
+                from .authoring_schema import AuthoringError
+                from .workflow_jobs import JobError
+                if isinstance(e, (AuthoringError, JobError)):
+                    code = e.code
+                else:
+                    code = "INVALID_REQUEST"
+                return self.send_json({"error": {"code": code}}, 400)
             traceback.print_exc()
             return self.send_json({"error": str(e)}, 400)
         self.send_json({"error": "not found"}, 404)

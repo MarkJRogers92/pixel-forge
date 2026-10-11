@@ -38,19 +38,24 @@ def _destination(out: str | None, prompt: str) -> Path | None:
 
 
 @contextmanager
-def _stage(d: Path, meta: dict, name: str, provider: str | None = None):
+def _stage(d: Path, meta: dict, name: str, provider: str | None = None, progress=None):
     """Persist attempted calls and failures without retaining provider error text."""
     meta["stage"] = name
     if provider:
         meta["provider_calls"][provider] += 1
     _write_json(d / "meta.json", meta)
+    if progress:
+        progress(name)
     try:
         yield
     except Exception as exc:
-        meta.update(status="failed", failed_stage=name, error_type=type(exc).__name__)
-        _write_json(d / "meta.json", meta)
+        if getattr(exc, "code", None) != "JOB_CANCELLED":
+            meta.update(status="failed", failed_stage=name, error_type=type(exc).__name__)
+            _write_json(d / "meta.json", meta)
         raise
     _write_json(d / "meta.json", meta)
+    if progress:
+        progress(name)
 
 
 def _bounded_ops(ops: list) -> None:
@@ -139,7 +144,7 @@ def _finish(item_id: str, d: Path, sprite: Sprite, meta: dict, destination: Path
 def prepare(prompt: str, width: int | None = None, height: int | None = None,
             profile: str | None = None, project: str | None = None, input_png: str | None = None,
             checks: list[str] | None = None, out: str | None = None, open_in: str | None = None,
-            log=print) -> dict:
+            log=print, progress=None) -> dict:
     if not prompt.strip():
         raise ValueError("a sprite brief is required")
     if open_in is not None and open_in not in editors.EDITORS:
@@ -168,20 +173,24 @@ def prepare(prompt: str, width: int | None = None, height: int | None = None,
             "project": project, "checks": checks or [], "status": "preparing",
             "provider_calls": {"gpt_image": 0, "rd_neural_fixer": 0, "claude": 0}}
     _write_json(d / "meta.json", meta)
+    if progress:
+        progress("starting", item_id)
     painting = work / "gpt_painting.png"
     if source_bytes is not None:
         painting.write_bytes(source_bytes)
         meta["source"] = str(source)
     else:
         brief = prompt + ("\nRequirements visible at game size:\n- " + "\n- ".join(checks) if checks else "")
-        with _stage(d, meta, "gpt_image", "gpt_image"):
+        with _stage(d, meta, "gpt_image", "gpt_image", progress=lambda stage: progress(stage, item_id) if progress else None):
             painting = artist.paint_with_gpt_image(brief, w, h, prof, work, log, strict_output=True)
     original = painting.read_bytes()
     meta["source_sha256"] = hashlib.sha256(original).hexdigest()
     image = load_image(original)
     image.resize((w, h), Image.Resampling.NEAREST).save(work / "gpt_reference.png")
+    if progress:
+        progress("rd_neural_fixer", item_id)
     log("RD neural fixer: reconstructing at game size (no RD balance spent)…")
-    with _stage(d, meta, "rd_neural_fixer", "rd_neural_fixer"):
+    with _stage(d, meta, "rd_neural_fixer", "rd_neural_fixer", progress=lambda stage: progress(stage, item_id) if progress else None):
         fixed, fixer_report = rd_fixer.neural_fixer(image, w, h, key=key, input_path=work / "fixer_input.png")
         fixed.save(work / "rd_neural.png")
     # The fixer has already established the grid. Do not downsample it again or polish globally.
@@ -189,9 +198,14 @@ def prepare(prompt: str, width: int | None = None, height: int | None = None,
     sprite, cleanup_report = cleanup(fixed, CleanupOptions(width=w, height=h, max_colors=32,
         palette=strict_palette, remove_background="auto", detect_grid=False, remove_orphans=False))
     sprite.save(work / "cleaned.png")
+    if progress:
+        progress("cleanup", item_id)
     meta.update({"fixer": fixer_report, "cleanup": cleanup_report.__dict__})
     log("Cleanup/QA ready. Dot visual review is pending; Claude was not called.")
-    return _finish(item_id, d, sprite, meta, destination, open_in)
+    result = _finish(item_id, d, sprite, meta, destination, open_in)
+    if progress:
+        progress("awaiting_visual_review", item_id)
+    return result
 
 
 def repair(item_id: str, instructions: str, max_changed_pixels: int | None = None,

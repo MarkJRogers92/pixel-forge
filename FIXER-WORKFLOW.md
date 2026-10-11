@@ -47,6 +47,19 @@ Forge does not run an extra model or manufacture a successful visual-review resu
 `--out` copies a review candidate with exclusive creation; `--open aseprite` opens
 it for inspection while its review status remains pending.
 
+## Browser Create tab
+
+The editor's AI → Create tab defaults to the same GPT reference → free RD neural
+fixer → cleanup/QA → visual-review workflow. It shows available stage previews
+as crisp nearest-neighbour thumbnails and restores the same request after a page
+refresh. Cancel stops local work when possible; it cannot refund provider credits
+already spent. Your current canvas stays untouched while generation runs; choose
+**Open final as new sprite** to load the result when ready. **Competing drafts**
+uses the older Create workflow.
+
+For the optional guided PixelLab style route and safe local dry-run trial, see
+[PIXELLAB-STYLE.md](PIXELLAB-STYLE.md).
+
 ## Optional Opus repair
 
 ```bash

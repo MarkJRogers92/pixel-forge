@@ -5,6 +5,8 @@
   mcp-readonly                       restricted MCP for existing assets; no generation
   mcp-authoring [--enable-authoring]  bounded direct drawing; writes disabled by default
   make "prompt" [options]            fully automatic: style -> draw -> review -> QA -> save/export
+  pixellab-style-test "prompt"       dry-run or compare PixelLab text vs style/palette guidance
+  pixellab-style-resume LIBRARY_ID   retry one failed guided half without regenerating the baseline
   prepare "prompt" [options]         GPT -> RD neural fixer -> cleanup/QA -> Dot review
   repair LIBRARY_ID "instructions"   one Claude Opus patch -> QA -> Dot review
   render program.json                render a sprite program (when an agent draws directly)
@@ -28,6 +30,7 @@ from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
 from . import routes as route_mod
+from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
 from .sprite import Sprite, preview_image
 from .fixer_workflow import prepare, repair
@@ -171,6 +174,19 @@ def main(argv=None):
     prep.add_argument("-o", "--out", help="copy the review candidate; never overwrites")
     prep.add_argument("--open", dest="open_in", choices=editors.EDITORS,
                       help="open the candidate for inspection; visual approval remains pending")
+
+    style_test = sub.add_parser("pixellab-style-test", help="dry-run or run a two-image PixelLab style comparison")
+    style_test.add_argument("prompt")
+    style_source = style_test.add_mutually_exclusive_group(required=True)
+    style_source.add_argument("--profile")
+    style_source.add_argument("--project", help="registered project id or folder with an existing style profile")
+    style_test.add_argument("-W", "--width", type=int, required=True)
+    style_test.add_argument("-H", "--height", type=int, required=True)
+    style_test.add_argument("--reference", help="use this local image instead of the profile's first reference")
+    style_test.add_argument("--seed", type=int, default=0)
+    style_test.add_argument("--run", action="store_true", help="spend credits on exactly two BitForge generations")
+    style_resume = sub.add_parser("pixellab-style-resume", help="retry one failed guided variant in a saved trial")
+    style_resume.add_argument("item", help="library id from a PixelLab style trial")
     patch = sub.add_parser("repair", help="one optional Claude Opus pixel repair in a new library item")
     patch.add_argument("item"); patch.add_argument("instructions")
     patch.add_argument("--max-changed-pixels", type=int, help="default: 10%% of the canvas")
@@ -235,6 +251,21 @@ def main(argv=None):
     elif a.cmd == "prepare":
         dump(prepare(a.prompt, a.width, a.height, a.profile, a.project, a.input_png,
                      a.check, a.out, a.open_in, log=lambda m: print(m, file=sys.stderr)))
+    elif a.cmd == "pixellab-style-test":
+        profile_id = a.profile
+        if a.project:
+            profile_id = projects.get(a.project)["id"]
+        prof = profiles.load(profile_id)
+        if not prof:
+            raise SystemExit("select an existing style profile with --profile or --project")
+        result = (pixellab_style.run_trial(a.prompt, a.width, a.height, prof, a.reference, a.seed,
+                                           log=lambda m: print(m, file=sys.stderr))
+                  if a.run else
+                  pixellab_style.dry_run(a.prompt, a.width, a.height, prof, a.reference, a.seed))
+        dump(result)
+    elif a.cmd == "pixellab-style-resume":
+        dump(pixellab_style.resume_guided_trial(a.item,
+                                                log=lambda m: print(m, file=sys.stderr)))
     elif a.cmd == "repair":
         dump(repair(a.item, a.instructions, a.max_changed_pixels, a.out, a.open_in,
                     log=lambda m: print(m, file=sys.stderr)))

@@ -6,11 +6,17 @@ import os
 from pathlib import Path
 import signal
 import sys
+import threading
+import time
 
 from . import aseprite, editors, fixer_workflow, library, readonly_mcp
 from .authoring_schema import validate_model
 from .workflow_jobs import WorkflowJobs, JobError, write_json, public_result
 from .workflow_mcp import MODELS
+
+
+class WorkflowCancelled(Exception):
+    code = 'JOB_CANCELLED'
 
 
 def validate_work_files(jobs, library_id):
@@ -34,7 +40,8 @@ def execute(jobs, tool, args):
             asset = 'work/gpt_painting.png' if args['source_asset'] == 'gpt_painting.png' else 'sprite.png'
             source = str(jobs.item_file(args['source_library_id'], asset))
         return fixer_workflow.prepare(args['prompt'], args['width'], args['height'],
-            project=args['project'], input_png=source, checks=args['checks'])
+            project=args['project'], input_png=source, checks=args['checks'],
+            progress=lambda stage, library_id=None: jobs.progress(args['request_id'], stage, library_id))
     if tool == 'forge_repair':
         jobs.item_file(args['library_id'])
         validate_work_files(jobs, args['library_id'])
@@ -83,10 +90,41 @@ def main():
     jobs = WorkflowJobs(readonly_mcp.store, enabled=True)
     request_id = sys.argv[1]
     folder = jobs._folder(request_id)
+    cancel_requested = threading.Event()
+    def handle_cancel(*_):
+        cancel_requested.set()
+        raise WorkflowCancelled()
+    def watch_cancel():
+        marker = folder / 'cancel.requested'
+        while not marker.exists():
+            time.sleep(0.05)
+        session_id = os.getpgrp()
+        try:
+            # This worker is running inside the session it created for its own children.
+            jobs._signal_owned_group(session_id, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 2
+        while True:
+            members = jobs._owned_group_members(session_id)
+            active_children = members is not None and any(
+                pid != os.getpid() and not state.startswith('Z') for pid, state in members.items())
+            if members is not None and not active_children:
+                return
+            if time.monotonic() >= deadline:
+                try:
+                    jobs._signal_owned_group(session_id, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                deadline = time.monotonic() + 2
+            time.sleep(0.05)
+    signal.signal(signal.SIGTERM, handle_cancel)
+    watcher = threading.Thread(target=watch_cancel, daemon=True)
     # Bound a stuck workflow, including its child CLI process group.
     def timeout(*_):
-        write_json(folder / 'result.json', {'request_id': request_id, 'state': 'failed',
-                                           'error': {'code': 'JOB_TIMEOUT'}})
+        # Do not acquire the job lock from an alarm handler: the signal may have
+        # interrupted this thread while it held that same lock.
+        (folder / 'timeout.requested').touch(exist_ok=True)
         os.killpg(os.getpgrp(), signal.SIGKILL)
     signal.signal(signal.SIGALRM, timeout)
     signal.alarm(1800)
@@ -94,15 +132,50 @@ def main():
         request = readonly_mcp._json_file(folder, 'request.json')
         tool = request['tool']
         args = validate_model(MODELS[tool], request['arguments']).model_dump()
-        state = readonly_mcp._json_file(folder, 'state.json')
-        write_json(folder / 'state.json', {**state, 'state': 'running', 'pid': os.getpid()})
+        with jobs._locked(folder):
+            if (folder / 'cancel.requested').exists():
+                raise WorkflowCancelled()
+            state = readonly_mcp._json_file(folder, 'state.json')
+            write_json(folder / 'state.json', {**state, 'state': 'running', 'pid': os.getpid()})
+        watcher.start()
         result = execute(jobs, tool, args)
-        state = {'request_id': request_id, 'state': 'completed', 'result': public_result(result)}
+        with jobs._locked(folder):
+            current = readonly_mcp._json_file(folder, 'state.json')
+            if (folder / 'cancel.requested').exists() or current.get('state') == 'cancelling':
+                state = {**current, 'request_id': request_id, 'state': 'cancelling',
+                    'stage': current.get('stage'), 'library_id': current.get('library_id'),
+                    'log': current.get('log', []), 'previews': current.get('previews', [])}
+                write_json(folder / 'state.json', state)
+            else:
+                state = {'request_id': request_id, 'state': 'completed',
+                    'stage': current.get('stage'), 'library_id': current.get('library_id'),
+                    'log': current.get('log', []), 'previews': current.get('previews', []),
+                    'result': public_result(result)}
+                write_json(folder / 'result.json', state)
+    except WorkflowCancelled:
+        if watcher.is_alive():
+            watcher.join(2.5)
+        with jobs._locked(folder):
+            current = readonly_mcp._json_file(folder, 'state.json')
+            state = {**current, 'request_id': request_id, 'state': 'cancelling',
+                'stage': current.get('stage'), 'library_id': current.get('library_id'),
+                'log': current.get('log', []), 'previews': current.get('previews', [])}
+            write_json(folder / 'state.json', state)
     except Exception as exc:
-        state = {'request_id': request_id, 'state': 'failed',
-                 'error': {'code': getattr(exc, 'code', 'WORKFLOW_FAILED'), 'type': type(exc).__name__},
-                 'instructions': 'Inspect retained library work; this request will not be replayed.'}
-    write_json(folder / 'result.json', state)
+        with jobs._locked(folder):
+            current = readonly_mcp._json_file(folder, 'state.json')
+            if (folder / 'cancel.requested').exists() or current.get('state') == 'cancelling':
+                state = {**current, 'request_id': request_id, 'state': 'cancelling',
+                    'stage': current.get('stage'), 'library_id': current.get('library_id'),
+                    'log': current.get('log', []), 'previews': current.get('previews', [])}
+                write_json(folder / 'state.json', state)
+            else:
+                state = {'request_id': request_id, 'state': 'failed',
+                    'stage': current.get('stage'), 'library_id': current.get('library_id'),
+                    'log': current.get('log', []), 'previews': current.get('previews', []),
+                    'error': {'code': getattr(exc, 'code', 'WORKFLOW_FAILED'), 'type': type(exc).__name__},
+                    'instructions': 'Inspect retained library work; this request will not be replayed.'}
+                write_json(folder / 'result.json', state)
 
 
 if __name__ == '__main__':

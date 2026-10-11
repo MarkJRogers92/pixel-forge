@@ -9,6 +9,14 @@ Read `HANDOFF-CHATGPT.md` once for the full picture; this file is the manual.
 
 ## Run it
 
+Preferred image workflow: `./forge.sh prepare "<brief>" --project dead-mall -W <w> -H <h>`.
+GPT reference → free RD neural fixer → conservative cleanup/QA → Dot visual review
+at 1x/2x → optional `forge.sh repair <id> "<focused fix>"` (one Claude Opus patch)
+→ Aseprite → import final edits and QA. See `FIXER-WORKFLOW.md`.
+`prepare` returns `awaiting_visual_review`; inspect its review sheet before calling
+the sprite approved. It does not call Claude. The original `make` pipeline below
+remains available for competing drafts.
+
 ```bash
 cd ~/code/pixel-forge
 ./forge.sh make "<what to draw>" --project dead-mall -W <w> -H <h> -n 3 --rounds 2 \
@@ -52,6 +60,9 @@ to draw directly), `forge_pixelize`, `forge_status`, `forge_project_assets`.
 
 ## Workflow for a new asset
 
+Use the preferred GPT/fixer workflow in `FIXER-WORKFLOW.md` by default. The
+competition workflow below is available when an asset needs alternative drafts.
+
 1. **Checklist**: turn the request into 3-6 `--check`s visible at 1x. No text or
    letters in art unless asked (the game renders signs).
 2. **Generate**: one run with routes for variety (`--route rd --route pixellab`),
@@ -85,7 +96,8 @@ to draw directly), `forge_pixelize`, `forge_status`, `forge_project_assets`.
 - Don't edit `editor/` (Piskel fork, its own git repo) unless the task is the editor.
 - Tests: `.venv/bin/python -m pytest -q tests` (46 tests; one does a real Aseprite
   round trip and is skipped if Aseprite is missing). Run them after code changes.
-- Commit Pixel Forge changes to its local git (no remote).
+- Commit Pixel Forge changes locally. Never push or merge unless Mark explicitly
+  authorizes that action; authorization applies only to the targets he names.
 
 ## Environment and pitfalls
 

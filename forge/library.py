@@ -12,9 +12,14 @@ from .sprite import Sprite
 ROOT = Path(__file__).resolve().parent.parent / "library"
 
 
-def new_dir(prompt: str) -> tuple[str, Path]:
+def allocate_id(prompt: str) -> str:
+    """Allocate the canonical ID without publishing a directory."""
     slug = re.sub(r"[^a-z0-9]+", "-", prompt.lower()).strip("-")[:40] or "sprite"
-    item_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{slug}-{uuid.uuid4().hex[:4]}"
+    return f"{time.strftime('%Y%m%d-%H%M%S')}-{slug}-{uuid.uuid4().hex[:4]}"
+
+
+def new_dir(prompt: str) -> tuple[str, Path]:
+    item_id = allocate_id(prompt)
     d = ROOT / item_id
     d.mkdir(parents=True)
     return item_id, d

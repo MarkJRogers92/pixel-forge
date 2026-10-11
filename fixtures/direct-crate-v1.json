@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "request_id": "dot-release1-crate-fixture-v1",
+  "title": "Direct test crate",
+  "description": "Release-one fixture: outlined transparent 16x16 crate, local direct drawing only.",
+  "profile_id": "dead-mall",
+  "canvas": {"width": 16, "height": 16},
+  "palette": [[20, 20, 28, 255], [146, 111, 63, 255], [251, 177, 89, 255]],
+  "operations": [
+    {"op": "rectangle", "x": 2, "y": 3, "width": 12, "height": 11, "color": 0},
+    {"op": "rectangle", "x": 3, "y": 4, "width": 10, "height": 9, "color": 1},
+    {"op": "line", "x1": 3, "y1": 4, "x2": 12, "y2": 12, "color": 2}
+  ]
+}

@@ -7,3 +7,4 @@ __pycache__/
 editor/node_modules/
 editor/dest/
 .pytest_cache/
+artifacts/

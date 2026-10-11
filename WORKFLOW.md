@@ -1,6 +1,17 @@
 # Asset workflow
 
-The process that produced the final arcade cabinet (2026-09-29). Use it for every new asset.
+Preferred: checklist → GPT pixel-art reference → RD neural fixer → Forge cleanup/QA → Dot review → optional Opus patch → Aseprite → final QA. See `FIXER-WORKFLOW.md`.
+
+```bash
+./forge.sh prepare "<brief>" --project dead-mall -W 32 -H 48 --check "<visible at 1x>"
+# Inspect the returned review sheet; repair only a concrete issue.
+./forge.sh repair <library-id> "<focused repair>"
+# Review the new sprite again, then finish in Aseprite.
+./forge.sh open <chosen-library-id> --editor aseprite
+./forge.sh from-aseprite /absolute/path/sprite.aseprite --name "<asset edited>"
+```
+
+The following competition workflow is available when an asset needs alternate drafts. It produced the final arcade cabinet (2026-09-29).
 
 ## 1. Brief → checklist
 Turn the request into 3-6 concrete checks that must be visible at 1x, e.g.

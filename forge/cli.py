@@ -3,7 +3,12 @@
   serve                              editor + AI panel on http://127.0.0.1:9002
   mcp                                MCP server (stdio) for Claude Code / Codex
   mcp-readonly                       restricted MCP for existing assets; no generation
+  mcp-authoring [--enable-authoring]  bounded direct drawing; writes disabled by default
   make "prompt" [options]            fully automatic: style -> draw -> review -> QA -> save/export
+  pixellab-style-test "prompt"       dry-run or compare PixelLab text vs style/palette guidance
+  pixellab-style-resume LIBRARY_ID   retry one failed guided half without regenerating the baseline
+  prepare "prompt" [options]         GPT -> RD neural fixer -> cleanup/QA -> Dot review
+  repair LIBRARY_ID "instructions"   one Claude Opus patch -> QA -> Dot review
   render program.json                render a sprite program (when an agent draws directly)
   cleanup image.png                  turn any image into true pixel art
   qa sprite.png                      automated checks
@@ -25,8 +30,10 @@ from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
 from . import routes as route_mod
+from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
 from .sprite import Sprite, preview_image
+from .fixer_workflow import prepare, repair
 
 ARTISTS = sorted(artist.BACKENDS) + ["gpt-image"]
 
@@ -125,6 +132,11 @@ def main(argv=None):
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=9002)
     sub.add_parser("mcp")
     sub.add_parser("mcp-readonly")
+    direct = sub.add_parser("mcp-authoring")
+    direct.add_argument("--enable-authoring", action="store_true")
+    workflow = sub.add_parser("mcp-workflow")
+    workflow.add_argument("--enable-authoring", action="store_true")
+    workflow.add_argument("--enable-workflow", action="store_true")
     sub.add_parser("guide")
     sub.add_parser("profiles")
 
@@ -152,6 +164,33 @@ def main(argv=None):
                        help="skip the combine step (bringing the best feature of each other draft into the winner)")
         g.add_argument("--open", dest="open_in", choices=editors.EDITORS,
                        help="open the result: aseprite (layered document), piskel, or both")
+
+    prep = sub.add_parser("prepare", help="GPT image -> free RD neural fixer -> QA; pauses for Dot review")
+    prep.add_argument("prompt")
+    prep.add_argument("-W", "--width", type=int); prep.add_argument("-H", "--height", type=int)
+    prep.add_argument("--profile"); prep.add_argument("--project")
+    prep.add_argument("--input", dest="input_png", help="reuse an existing reference; skips GPT generation")
+    prep.add_argument("--check", action="append", default=[])
+    prep.add_argument("-o", "--out", help="copy the review candidate; never overwrites")
+    prep.add_argument("--open", dest="open_in", choices=editors.EDITORS,
+                      help="open the candidate for inspection; visual approval remains pending")
+
+    style_test = sub.add_parser("pixellab-style-test", help="dry-run or run a two-image PixelLab style comparison")
+    style_test.add_argument("prompt")
+    style_source = style_test.add_mutually_exclusive_group(required=True)
+    style_source.add_argument("--profile")
+    style_source.add_argument("--project", help="registered project id or folder with an existing style profile")
+    style_test.add_argument("-W", "--width", type=int, required=True)
+    style_test.add_argument("-H", "--height", type=int, required=True)
+    style_test.add_argument("--reference", help="use this local image instead of the profile's first reference")
+    style_test.add_argument("--seed", type=int, default=0)
+    style_test.add_argument("--run", action="store_true", help="spend credits on exactly two BitForge generations")
+    style_resume = sub.add_parser("pixellab-style-resume", help="retry one failed guided variant in a saved trial")
+    style_resume.add_argument("item", help="library id from a PixelLab style trial")
+    patch = sub.add_parser("repair", help="one optional Claude Opus pixel repair in a new library item")
+    patch.add_argument("item"); patch.add_argument("instructions")
+    patch.add_argument("--max-changed-pixels", type=int, help="default: 10%% of the canvas")
+    patch.add_argument("-o", "--out"); patch.add_argument("--open", dest="open_in", choices=editors.EDITORS)
 
     r = sub.add_parser("render")
     r.add_argument("program"); r.add_argument("-o", "--out"); r.add_argument("--base")
@@ -193,6 +232,13 @@ def main(argv=None):
     elif a.cmd == "mcp-readonly":
         from .readonly_mcp import main as mcp_main
         mcp_main()
+    elif a.cmd == "mcp-authoring":
+        from .authoring_mcp import main as mcp_main
+        mcp_main(["--enable-authoring"] if a.enable_authoring else [])
+    elif a.cmd == "mcp-workflow":
+        from .workflow_mcp import main as mcp_main
+        mcp_main((["--enable-authoring"] if a.enable_authoring else []) +
+                 (["--enable-workflow"] if a.enable_workflow else []))
     elif a.cmd == "guide":
         print(artist.GUIDE)
     elif a.cmd == "profiles":
@@ -202,6 +248,27 @@ def main(argv=None):
                   a.start, a.out, log=lambda m: print(m, file=sys.stderr), refiner=a.refiner,
                   polish=not a.no_polish, candidates=a.candidates, checks=a.check, refs=a.ref,
                   routes=a.route, open_in=a.open_in, combine=not a.no_combine))
+    elif a.cmd == "prepare":
+        dump(prepare(a.prompt, a.width, a.height, a.profile, a.project, a.input_png,
+                     a.check, a.out, a.open_in, log=lambda m: print(m, file=sys.stderr)))
+    elif a.cmd == "pixellab-style-test":
+        profile_id = a.profile
+        if a.project:
+            profile_id = projects.get(a.project)["id"]
+        prof = profiles.load(profile_id)
+        if not prof:
+            raise SystemExit("select an existing style profile with --profile or --project")
+        result = (pixellab_style.run_trial(a.prompt, a.width, a.height, prof, a.reference, a.seed,
+                                           log=lambda m: print(m, file=sys.stderr))
+                  if a.run else
+                  pixellab_style.dry_run(a.prompt, a.width, a.height, prof, a.reference, a.seed))
+        dump(result)
+    elif a.cmd == "pixellab-style-resume":
+        dump(pixellab_style.resume_guided_trial(a.item,
+                                                log=lambda m: print(m, file=sys.stderr)))
+    elif a.cmd == "repair":
+        dump(repair(a.item, a.instructions, a.max_changed_pixels, a.out, a.open_in,
+                    log=lambda m: print(m, file=sys.stderr)))
     elif a.cmd == "render":
         base = Sprite.from_image(load_image(Path(a.base).read_bytes())) if a.base else None
         res = dsl.render(json.loads(Path(a.program).read_text()), base)

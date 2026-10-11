@@ -98,6 +98,14 @@ def pixellab(prompt: str, width: int, height: int, profile: dict | None) -> Spri
     return _to_sprite(_decode(image["base64"]), width, height, profile)
 
 
+def pixellab_style(prompt: str, width: int, height: int, profile: dict | None) -> Sprite:
+    """One explicit BitForge draft guided by the profile reference and palette."""
+    # Lazy import keeps the optional BitForge feature out of the regular route
+    # startup path and avoids a module cycle with its shared transport helpers.
+    from .pixellab_style import guided_route
+    return guided_route(prompt, width, height, profile)
+
+
 def retro_diffusion(prompt: str, width: int, height: int, profile: dict | None) -> Sprite:
     key = api_key(KEYS["rd"])
     if not key:
@@ -125,6 +133,7 @@ def retro_diffusion(prompt: str, width: int, height: int, profile: dict | None) 
 
 ROUTES: dict[str, Callable[[str, int, int, dict | None], Sprite]] = {
     "pixellab": pixellab,
+    "pixellab-style": pixellab_style,
     "rd": retro_diffusion,
 }
 

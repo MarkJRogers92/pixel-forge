@@ -241,6 +241,22 @@ def test_bad_inputs_are_rejected():
         manifest.build_manifest(s, direction="west", directions=["south"])
 
 
+def test_the_review_copy_matches_the_written_sprite_in_tight_alignment(tmp_path):
+    """sprite@8x.png used to show the full canvas while sprite.png was the crop."""
+    ref = tmp_path / "ref.png"
+    ref.write_bytes(small_png())
+    sprite = Sprite(16, 16, {"k": "#101018"})
+    for y in range(4, 12):
+        for x in range(5, 11):
+            sprite.set(x, y, "k")
+    folder = tmp_path / "asset"
+    manifest.export_manifest(folder, sprite, reference=manifest.reference_record(ref),
+                             alignment="tight")
+    with Image.open(folder / "sprite.png") as tight, Image.open(folder / "sprite@8x.png") as big:
+        assert big.size == (tight.width * 8, tight.height * 8)
+        assert tight.width < sprite.width          # tight really is the crop
+
+
 def test_normal_map_output_uses_todays_encoder_and_flags_the_old_dialect(tmp_path):
     ref = tmp_path / "ref.png"
     ref.write_bytes(small_png())

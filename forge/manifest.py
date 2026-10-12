@@ -431,10 +431,15 @@ def export_manifest(folder, primary: Sprite, *, frames=None, reference=None,
         manifest["canvas"]["content_bbox"] = bbox
         (folder / "sprite.json").write_text(json.dumps(
             Sprite.from_image(cropped).to_dict(), indent=1))
+        written = cropped
     else:
         primary.save(folder / "sprite.png")
         (folder / "sprite.json").write_text(json.dumps(primary.to_dict(), indent=1))
-    primary.save(folder / "sprite@8x.png", scale=8)
+        written = primary.to_image()
+    # the review copy must be the same sprite we just wrote: in tight alignment it
+    # used to be the full canvas, so sprite.png and sprite@8x.png disagreed.
+    written.resize((written.width * 8, written.height * 8), Image.NEAREST).save(
+        folder / "sprite@8x.png")
 
     # --- sheet + atlas ---
     order = list(frame_map)

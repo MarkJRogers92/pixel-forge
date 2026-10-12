@@ -165,3 +165,20 @@ def test_untrimmed_phaser_descriptor_keeps_the_uniform_snippet(tmp_path):
     assert desc["atlasTrimmed"] is False
     assert "i * frameWidth, 0, frameWidth, frameHeight" in desc["phaser"]["addFrames"]
     assert "trimmedNote" not in desc["phaser"]
+
+
+def test_atlas_utilisation_reports_texture_usage(tmp_path):
+    """TexturePacker's "texture usage": the share of the sheet that is sprite."""
+    res = animation.animate([block("#c03040"), block("#30a040")], tmp_path / "u",
+                            sheet_type="packed", trim=True)
+    # 4x4 of content per frame in an 8x8 canvas; packed+trim tiles it exactly
+    assert 0.0 < res["atlas_utilisation"] <= 1.0
+    # the same number computed by hand from the atlas we wrote
+    data = json.loads(Path(res["data"]).read_text())
+    frames = list(data["frames"].values())
+    size = data["meta"]["size"]
+    expected = sum(f["frame"]["w"] * f["frame"]["h"] for f in frames) / (size["w"] * size["h"])
+    assert res["atlas_utilisation"] == pytest.approx(expected, abs=1e-4)
+    # and it is absent when no atlas is written
+    assert "atlas_utilisation" not in animation.animate(
+        [block("#000000")], tmp_path / "n", data_name=None, gif_name=None)

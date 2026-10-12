@@ -92,6 +92,28 @@ def _atlas_frames(data_path):
     return rects
 
 
+def _atlas_utilisation(data_path, sheet_path=None):
+    """Fraction of the sheet that is actually sprite, i.e. TexturePacker's "texture usage".
+
+    TP's `pack-mode Good` targets "at least 90% of texture usage"; a number this
+    low means the sheet is mostly padding and a different sheet_type, order or
+    trimming would pay. Read from the atlas we wrote (the PNG size is cross-checked
+    only when a path is given).
+    """
+    data = json.loads(Path(data_path).read_text())
+    rects = _atlas_frames(data_path)
+    size = (data.get("meta") or {}).get("size") or {}
+    if not (size.get("w") and size.get("h")):
+        return None
+    if sheet_path is not None:
+        from PIL import Image
+        with Image.open(sheet_path) as im:
+            if (im.width, im.height) != (int(size["w"]), int(size["h"])):
+                size = {"w": im.width, "h": im.height}
+    area = int(size["w"]) * int(size["h"])
+    return round(sum(f["w"] * f["h"] for f in rects) / area, 4) if area else None
+
+
 def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, duration):
     """A drop-in geometry descriptor for a game engine (see GAMES)."""
     import hashlib
@@ -245,6 +267,8 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
     result = {"frames": len(frames), "size": [frames[0].width, frames[0].height],
               "fps": fps, "duration": duration, "tag": tag, "loop": loop,
               "sheet": str(sheet), "sheet_options": sheet_opts}
+    if data is not None:
+        result["atlas_utilisation"] = _atlas_utilisation(data, sheet)
     for key, path in (("data", data), ("gif", gif), ("project", project)):
         if path is not None:
             result[key] = str(path)

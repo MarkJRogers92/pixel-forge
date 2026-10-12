@@ -172,6 +172,32 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   ./forge.sh animate --library s1 --library s2 -o out/clip --type packed --trim --extrude --shape-padding 2
   ```
 
+- **Normal maps + lighting** (`forge normalmap`, `forge lit`, `forge_normalmap`,
+  `forge_lit_preview`): give a sprite volume under a 2D light. Height comes from the
+  sprite's **alpha** (not luminance), blurred with the same rule SpriteIlluminator uses
+  (`ksize = odd(max(3, round(2*radius)))`, `sigma = radius/2`, replicated borders), and
+  tilted with a 3×3 Sobel at the fixed 1/8 slope scale. Output is a standard normal map
+  (flat = RGB(128,128,255), blue ≥ 128) — i.e. what Godot's `hint_normal` decodes, so it
+  needs no flip. `--invert-y` is there if a consumer wants the other convention.
+
+  **Solid art needs `--rim`.** A flat opaque shape has a constant alpha, so its base pass
+  is a flat map that lights nothing. `--rim 0.85` builds SpriteIlluminator's
+  "Create Rim/Bevel" dome from the distance to the alpha edge, which is what makes a prop
+  read as volumetric.
+
+  ```bash
+  ./forge.sh normalmap <id> --rim 0.85 --blur 1.2 -o out/hero_n.png
+  ./forge.sh lit <id> -n out/hero_n.png --light 0.3 0.2 --engine godot -o out/hero_lit.png
+  ```
+
+  `lit` renders one light over the sprite (`--light X Y` normalized, `--brightness 0-100`,
+  colour/ambient alpha = intensity) using SpriteIlluminator's own equation — no specular or
+  gloss term, because it has none. `--height` sets the light's distance in pixels and is the
+  directionality knob: 100 is a soft, almost head-on light (measured: 4% between the lit and
+  unlit flank on a 32×48 prop), 15 is strong (~48%). With `--engine godot` it also writes
+  `<name>.light.json` (the uniform values) and `<name>.gdshader`, a canvas-item shader using
+  the same uniforms, so a Godot scene can drop the pair straight in.
+
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark
 outer outline, while keeping deliberate details: glints, rows of lights, multi-shade lights,

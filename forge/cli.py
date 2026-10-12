@@ -19,6 +19,8 @@
   quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
   blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
   animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
+  normalmap SPRITE                   write a normal map for 2D lighting (alpha height, optional bevel)
+  lit SPRITE                         render a lit preview from a sprite + normal map (+ engine shader)
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -33,7 +35,7 @@ import sys
 from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
-from . import animation, aseprite_ops
+from . import animation, aseprite_ops, lighting
 from . import routes as route_mod
 from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -41,6 +43,17 @@ from .sprite import Sprite, preview_image
 from .fixer_workflow import prepare, repair
 
 ARTISTS = sorted(artist.BACKENDS) + ["gpt-image"]
+
+
+def _sprite_source(value: str) -> Path:
+    """A PNG path, or a library item id (its sprite.png)."""
+    p = Path(value).expanduser()
+    if p.exists():
+        return p
+    item = library.item_path(value)
+    if not item.exists():
+        raise SystemExit(f"no such file or library item: {value}")
+    return item
 
 
 def _add_pass_args(parser) -> None:
@@ -310,6 +323,32 @@ def main(argv=None):
                     help="round the sheet up to a power of two")
     an.add_argument("--merge-duplicates", action="store_true",
                     help="store identical frames once in the sheet")
+    nm = sub.add_parser("normalmap", help="write a normal map for a sprite (2D lighting)")
+    nm.add_argument("sprite", help="sprite PNG, or a library item id")
+    nm.add_argument("-o", "--out", help="output PNG (default: <sprite>_n.png)")
+    nm.add_argument("--blur", type=float, default=0.0, help="smooth the height field first")
+    nm.add_argument("--rim", type=float, default=0.0,
+                    help="bevel dome strength (0-1) for solid art, which is otherwise flat")
+    nm.add_argument("--contour", type=float, default=0.5, help="how far the dome reaches in")
+    nm.add_argument("--invert-y", action="store_true", help="flip the green channel")
+    nm.add_argument("--luma", action="store_true",
+                    help="take height from luminance instead of alpha (emboss-like)")
+    nm.add_argument("--transparent", action="store_true",
+                    help="keep transparent pixels transparent (flat normal, alpha 0)")
+    lit = sub.add_parser("lit", help="render a lit preview from a sprite + its normal map")
+    lit.add_argument("sprite", help="sprite PNG, or a library item id")
+    lit.add_argument("-n", "--normal", help="normal map PNG (default: <sprite>_n.png)")
+    lit.add_argument("--light", nargs=2, type=float, default=[0.5, 0.5], metavar=("X", "Y"),
+                     help="light position, normalized (default: centre)")
+    lit.add_argument("--height", type=float, default=lighting.DEFAULT_HEIGHT,
+                     help="light height in pixels (bigger flattens it out)")
+    lit.add_argument("--color", default="#ffffff", help="light colour, alpha = intensity")
+    lit.add_argument("--brightness", type=float, default=lighting.DEFAULT_BRIGHTNESS,
+                     help="0-100, as in SpriteIlluminator")
+    lit.add_argument("--ambient", default="#80808080", help="ambient colour, alpha = intensity")
+    lit.add_argument("--engine", choices=["godot"], default=None,
+                     help="also write the engine's shader + light parameter JSON")
+    lit.add_argument("-o", "--out", help="output PNG (default: <sprite>_lit.png)")
     an.add_argument("--no-gif", action="store_true")
     an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
 
@@ -394,6 +433,24 @@ def main(argv=None):
     elif a.cmd == "lint":
         from PIL import Image
         dump(lint.lint_image(Image.open(a.image)))
+    elif a.cmd == "normalmap":
+        from . import normalmap
+        src = _sprite_source(a.sprite)
+        out = a.out or str(Path(src).with_name(Path(src).stem + "_n.png"))
+        dump({"normal": normalmap.save_normal_map(
+            src, out, height_source="luma" if a.luma else "alpha", blur=a.blur,
+            invert_y=a.invert_y, transparent_background=a.transparent,
+            rim=a.rim, contour=a.contour), "source": str(src)})
+    elif a.cmd == "lit":
+        src = _sprite_source(a.sprite)
+        normal = _sprite_source(a.normal) if a.normal else Path(src).with_name(
+            Path(src).stem + "_n.png")
+        if not Path(normal).exists():
+            raise SystemExit(f"no normal map at {normal}; run `forge normalmap {a.sprite}` first")
+        out = a.out or str(Path(src).with_name(Path(src).stem + "_lit.png"))
+        dump(lighting.lit_sprite(src, normal, out, light=tuple(a.light), height=a.height,
+                                 color=a.color, brightness=a.brightness, ambient=a.ambient,
+                                 engine=a.engine))
     elif a.cmd == "open":
         dump(editors.open_item(a.item, a.editor))
     elif a.cmd == "from-aseprite":

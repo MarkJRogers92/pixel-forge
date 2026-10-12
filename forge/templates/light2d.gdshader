@@ -4,6 +4,9 @@
 // reports/03_spriteilluminator.md): `brightness` is the 0..100 property value,
 // colour alpha is intensity, and there is no specular/gloss term. The parameter
 // JSON written by `forge lit --engine godot` feeds these values directly.
+// Parses clean on Godot 4.7.2 with the GL Compatibility renderer (checked
+// headless by tests/test_normalmap.py); the game currently targets 4.6, across
+// which these uniforms and built-ins are unchanged.
 //
 // Attach to a Sprite2D (or any CanvasItem) and assign its normal map.
 shader_type canvas_item;

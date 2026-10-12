@@ -5,6 +5,8 @@ square with a hard alpha edge: interior is flat, the 1px alpha boundary tilts.
 """
 import numpy as np
 import pytest
+import shutil
+import subprocess
 from PIL import Image
 
 from forge import lighting, normalmap
@@ -191,3 +193,43 @@ def test_lit_sprite_writes_the_engine_files(tmp_path):
 def test_mismatched_normal_size_is_rejected():
     with pytest.raises(ValueError):
         lighting.lit_preview(square(16), normalmap.normal_map(square(8)))
+
+
+# ---- the shipped Godot shader ----------------------------------------------
+
+GODOT = shutil.which("godot")
+_CHECK_GD = '''extends SceneTree
+
+func _initialize() -> void:
+\tfor path in ["res://light2d.gdshader", "res://broken.gdshader"]:
+\t\tvar sh: Shader = load(path)
+\t\tsh.code = sh.code
+\t\tprint("UNIFORMS ", path, " -> ", sh.get_shader_uniform_list().size())
+\t\tprint("PARSED ", path)
+\tquit(0)
+'''
+
+
+@pytest.mark.skipif(not GODOT, reason="godot not installed")
+def test_the_godot_shader_parses_and_the_check_can_fail(tmp_path):
+    """A shader that does not parse is worthless, and only Godot can tell us."""
+    from pathlib import Path as P
+    import forge
+    template = P(forge.__file__).parent / "templates" / "light2d.gdshader"
+    (tmp_path / "project.godot").write_text(
+        'config_version=5\n\n[application]\nconfig/name="shader-check"\n')
+    (tmp_path / "check.gd").write_text(_CHECK_GD)
+    (tmp_path / "light2d.gdshader").write_text(template.read_text())
+    # negative control: the check must actually fail on a broken shader
+    (tmp_path / "broken.gdshader").write_text(
+        template.read_text().replace("vec3 amb =", "vec3 amb = undefined_thing *"))
+
+    proc = subprocess.run([GODOT, "--headless", "--path", str(tmp_path), "-s", "check.gd"],
+                          capture_output=True, text=True, timeout=180)
+    out = proc.stdout + proc.stderr
+    assert "PARSED res://light2d.gdshader" in out, out
+    assert "UNIFORMS res://light2d.gdshader -> 7" in out, out
+    # the error below must belong to the control, i.e. the good shader is clean
+    good, _, bad = out.partition("res://broken.gdshader")
+    assert "SHADER ERROR" not in good, good
+    assert "SHADER ERROR" in bad, "the check cannot detect a broken shader"

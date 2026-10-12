@@ -7,6 +7,14 @@ Keys come from the environment (PIXELLAB_API_KEY, RETRODIFFUSION_API_KEY),
 falling back to an interactive zsh so GUI-launched tools see ~/.zshrc. They
 are never written anywhere. Each call spends credits: PixelLab one
 generation, Retro Diffusion about $0.02 (rd_fast).
+
+PixelLab (verified live 2026-10-12 against https://api.pixellab.ai): the API is
+v1, `POST /v1/generate-image-pixflux` is current, and the request/response fields
+below match its OpenAPI schema exactly. Note that `GET /v1/balance` reports only
+*USD credits* and reads `{"usd": 0.0}` even while generations remain, so it is not
+a usable preflight gate; the authoritative quota signal is the 402 the endpoint
+returns ("Insufficient generations and credits. Generations: n/m, Credits: c"),
+which this module already surfaces as a RouteError.
 """
 from __future__ import annotations
 

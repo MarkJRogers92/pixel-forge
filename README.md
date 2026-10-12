@@ -220,13 +220,39 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   ./forge.sh godot-frames out/clip/sheet.json --texture res://clip/sheet.png -o out/clip/frames.tres
   ```
 
-  This is the consumer that makes `--trim` worth using: a trimmed frame gets the
-  trimmed-off padding in its `AtlasTexture.margin` — its position in the original frame,
+  This is the consumer that makes `--trim` worth using: a trimmed frame gets the  trimmed-off padding in its `AtlasTexture.margin` — its position in the original frame,
   plus what was cut — because Godot draws a frame's `region` at `margin.position` inside a
   canvas of `region.size + margin.size`. Without it a trimmed sheet shifts *or resizes*
   every sprite. Verified by loading the generated file in the engine and asserting the drawn
   canvas size the engine reports, not merely that our numbers round-trip — see the
   Godot-export tests, which skip without `godot`.
+
+- **Collision shapes** (`forge collide`, `forge_collide`): convex hulls from a sprite's
+  alpha, the way PhysicsEditor does it — the outline is simplified by Douglas-Peucker with
+  the tolerance in **pixels**, then decomposed into convex hulls (ear clipping + greedy
+  merge, capped at `--max-vertices`, since Godot wants 3–8). Writes the engine-agnostic JSON
+  and/or a Godot 4 `.tscn` (`StaticBody2D` + one `CollisionShape2D` per hull, coordinates
+  relative to the sprite's centre).
+
+  ```bash
+  ./forge.sh collide <id> --tscn out/prop.tscn --tolerance 2.0
+  ```
+
+  Every run reports `accuracy` — the IoU between the shapes and the silhouette — because a
+  coarse tolerance changes the shape silently. Measured on a real 32x48 prop (783 opaque
+  pixels):
+
+  | tolerance | hulls | IoU |
+  |---|---|---|
+  | 0.5 | 40 | 1.000 |
+  | 1.0 | 15 | 0.947 |
+  | 2.0 | **8** | 0.919 |
+  | 3.0 | 5 | 0.839 (warns) |
+
+  So ~2.0 px is the sweet spot for props: a handful of hulls at ~92% agreement. Area alone
+  cannot see a shape change — a coarse tolerance can drop a notch off an L-shaped silhouette
+  and gain equal area elsewhere, leaving the ratio at 1.0 — which is why the warning uses
+  IoU instead.
 
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark

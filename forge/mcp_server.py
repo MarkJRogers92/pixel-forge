@@ -17,7 +17,7 @@ from mcp.server.mcpserver import Image, MCPServer
 from mcp.types import ToolAnnotations
 
 from . import artist, dsl, library, profiles, projects, qa
-from . import lighting
+from . import collision, lighting
 from .cleanup import CleanupOptions, cleanup, load_image
 from .sprite import Sprite, preview_image
 
@@ -369,6 +369,23 @@ def forge_godot_frames(atlas: str, texture: str, out: str, animation: str = "def
     from . import godot
     return json.dumps(godot.sprite_frames_tres(atlas, texture, out, animation=animation,
                                                fps=fps, loop=loop))
+
+
+@server.tool(description=(
+    "Convex collision shapes from a sprite's alpha, the way PhysicsEditor does it: the outline is "
+    "simplified by Douglas-Peucker with the tolerance in PIXELS, then decomposed into convex hulls "
+    "(ear clipping + greedy merge, capped at max_vertices - Godot wants 3..8). Returns the hulls "
+    "and any warnings; warnings include an under/over-covered ratio, because a coarse tolerance "
+    "silently shrinks or inflates a hitbox. tscn writes a Godot 4 scene (StaticBody2D + one "
+    "CollisionShape2D per hull) whose coordinates are pixels relative to the sprite's centre."))
+def forge_collide(sprite: str, out: str | None = None, tscn: str | None = None,
+                  name: str = "Collision", tolerance: float = collision.DEFAULT_TOLERANCE,
+                  alpha_threshold: int = collision.DEFAULT_ALPHA_THRESHOLD,
+                  max_vertices: int = collision.DEFAULT_MAX_VERTICES) -> str:
+    from . import collision
+    return json.dumps(collision.save_collision(
+        Path(sprite).expanduser(), out, tscn=tscn, name=name, tolerance=tolerance,
+        alpha_threshold=alpha_threshold, max_vertices=max_vertices), default=str)
 
 
 @server.tool(description="Register an existing folder of pixel art (read-only) so its style and assets can be used.")

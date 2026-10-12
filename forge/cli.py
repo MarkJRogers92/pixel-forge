@@ -22,6 +22,7 @@
   normalmap SPRITE                   write a normal map for 2D lighting (alpha height, optional bevel)
   lit SPRITE                         render a lit preview from a sprite + normal map (+ engine shader)
   godot-frames ATLAS --texture P     sheet atlas -> Godot 4 SpriteFrames .tres (trim-aware)
+  collide SPRITE [--tscn P]          convex collision shapes from the alpha -> Godot .tscn
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -36,7 +37,7 @@ import sys
 from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
-from . import animation, aseprite_ops, lighting
+from . import animation, aseprite_ops, collision, lighting
 from . import routes as route_mod
 from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -357,6 +358,18 @@ def main(argv=None):
     lit.add_argument("--frames", type=int, default=16, help="frames in the orbit GIF")
     lit.add_argument("--radius", type=float, default=0.35, help="orbit radius, normalized")
     lit.add_argument("--turns", type=float, default=1.0, help="revolutions per loop")
+    col = sub.add_parser("collide",
+                         help="convex collision shapes from a sprite's alpha (Godot .tscn)")
+    col.add_argument("sprite", help="sprite PNG, or a library item id")
+    col.add_argument("-o", "--out", help="write the engine-agnostic JSON here")
+    col.add_argument("--tscn", help="write a Godot 4 .tscn (StaticBody2D + CollisionShape2D)")
+    col.add_argument("--name", default="Collision", help="root node name for the .tscn")
+    col.add_argument("--tolerance", type=float, default=collision.DEFAULT_TOLERANCE,
+                     help="Douglas-Peucker tolerance in PIXELS (default 1.0)")
+    col.add_argument("--alpha-threshold", type=int, default=collision.DEFAULT_ALPHA_THRESHOLD,
+                     help="alpha above this is part of the shape (strictly greater)")
+    col.add_argument("--max-vertices", type=int, default=collision.DEFAULT_MAX_VERTICES,
+                     help="cap per convex hull (Godot wants 3..8)")
     gf = sub.add_parser("godot-frames",
                         help="turn a sheet's JSON atlas into a Godot 4 SpriteFrames resource")
     gf.add_argument("atlas", help="the sheet JSON written by `forge animate`")
@@ -474,6 +487,13 @@ def main(argv=None):
             out = a.out or str(Path(src).with_name(Path(src).stem + "_lit.png"))
             dump(lighting.lit_sprite(src, normal, out, light=tuple(a.light), engine=a.engine,
                                      **common))
+    elif a.cmd == "collide":
+        src = _sprite_source(a.sprite)
+        out = a.out or (str(Path(src).with_name(Path(src).stem + "_shapes.json"))
+                        if not a.tscn else None)
+        dump(collision.save_collision(
+            src, out, tscn=a.tscn, name=a.name, tolerance=a.tolerance,
+            alpha_threshold=a.alpha_threshold, max_vertices=a.max_vertices))
     elif a.cmd == "godot-frames":
         from . import godot
         dump(godot.sprite_frames_tres(a.atlas, a.texture, a.out, animation=a.animation,

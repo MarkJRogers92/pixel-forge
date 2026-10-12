@@ -18,6 +18,7 @@
   dither IMAGE                       dither onto a palette with Aseprite's engine (ordered/error-diffusion)
   quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
   blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
+  animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -232,6 +233,18 @@ def main(argv=None):
     bl.add_argument("--mode", default="multiply", choices=sorted(_MODES))
     bl.add_argument("--opacity", type=float, default=1.0)
 
+    from . import animation as _anim
+    an = sub.add_parser("animate", help="build an animation and export a sprite sheet + GIF")
+    an.add_argument("frames", nargs="+", help="frame PNGs, in playback order")
+    an.add_argument("-o", "--out", required=True, help="output directory")
+    an.add_argument("--tag", default="animation")
+    an.add_argument("--fps", type=float, default=10.0)
+    an.add_argument("--loop", default="forward", choices=sorted(_anim.LOOP_DIRS))
+    an.add_argument("--type", dest="sheet_type", default="horizontal", choices=list(_anim.SHEET_TYPES))
+    an.add_argument("--data-format", default="json-hash", choices=list(_anim.DATA_FORMATS))
+    an.add_argument("--no-gif", action="store_true")
+    an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
+
     p = sub.add_parser("project")
     psub = p.add_subparsers(dest="pcmd", required=True)
     pa = psub.add_parser("add"); pa.add_argument("path"); pa.add_argument("--name"); pa.add_argument("--id")
@@ -330,6 +343,13 @@ def main(argv=None):
         out = Path(a.out) if a.out else Path(src).with_name(Path(src).stem + f"-{a.cmd}.png")
         sprite.save(out)
         dump({"png": str(out), "size": [sprite.width, sprite.height], "qa": qa.check(sprite)})
+    elif a.cmd == "animate":
+        from . import animation
+        frames = [Sprite.from_image(load_image(Path(p).read_bytes())) for p in a.frames]
+        dump(animation.animate(frames, a.out, tag=a.tag, fps=a.fps, loop=a.loop,
+                               sheet_type=a.sheet_type, data_format=a.data_format,
+                               gif_name=None if a.no_gif else "animation.gif",
+                               project_name="animation.aseprite" if a.project else None))
     elif a.cmd == "project":
         if a.pcmd == "add":
             dump(projects.register(a.path, a.name, a.id))

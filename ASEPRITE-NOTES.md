@@ -74,6 +74,25 @@ ADDITION=29, SUBTRACT=30, DIVIDE=31`.
   `ChangePixelFormat`, `ExportSpriteSheet`, `ImportSpriteSheet`, `SetPalette`,
   `Flip`, `Rotate`, `InvertMask`, `ReplaceColor`, `SpriteSize`.
 
+## Animation and export (verified in batch mode)
+
+- **Frames** — `sprite:newFrame()` appends a frame and returns it; set
+  `frame.duration` (seconds, e.g. `0.1`). `#sprite.frames` is the frame count.
+- **Tags** — `sprite:newTag(frame)` returns a tag; set `name`, `fromFrame`,
+  `toFrame` and `aniDir = AniDir[...]`. The `AniDir` enum values are
+  **`FORWARD=0`, `REVERSE=1`, `PING_PONG=2`** (note: `PINGPONG` is *not* a member).
+- **Sprite sheet** — `app.command.ExportSpriteSheet{ ui=false, type=<t>,
+  textureFilename=<png>, dataFilename=<json>, dataFormat=<json-hash|json-array> }`.
+  `type` accepts `horizontal`, `vertical`, `packed`, `rows`, `columns`, `grid`
+  (all verified). `json-hash` writes per-frame rects plus `duration`.
+- **Animated GIF** — `sprite:saveAs("<path>.gif")` writes a GIF89a covering the
+  frames with their durations.
+- **Slices / groups** — `sprite:newSlice()` with `slice.bounds = Rectangle(x,y,w,h)`
+  and `sprite:newGroup()` both work. `sprite:newTileset(layer)` needs an extra
+  grid/table argument, so it is not used.
+
+Used by `forge/animation.py` (`forge animate` / `forge_animate`).
+
 ## Known limitation (why there is no Aseprite-backed outline)
 
 `app.command.Outline{ ui=false, … }` **runs without error but does not modify the

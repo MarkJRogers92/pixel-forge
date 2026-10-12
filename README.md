@@ -139,6 +139,14 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   ./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png
   ./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png
   ```
+- **Animation** (`forge animate`, `forge_animate`): build a real Aseprite animation from
+  ordered frame PNGs — per-frame durations from `--fps`, a tag with a loop direction
+  (`forward`/`reverse`/`pingpong`) — and export a **game-ready sprite sheet** (PNG + JSON
+  atlas), an animated **GIF for review**, and an editable `.aseprite`.
+
+  ```bash
+  ./forge.sh animate frame0.png frame1.png frame2.png -o out/clip --tag flicker --fps 12 --loop pingpong
+  ```
 
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark
@@ -155,7 +163,8 @@ Tools: `forge_prepare` (preferred; returns the visual review sheet), `forge_repa
 `forge_guide` + `forge_render` (the
 calling agent draws itself and sees the image), `forge_pixelize`, `forge_open`,
 `forge_from_aseprite`, `forge_dither` / `forge_quantize` / `forge_blend` (Aseprite
-engine passes), `forge_lint`, `forge_add_project`, `forge_learn_style`,
+engine passes), `forge_animate` (animation → sprite sheet + GIF), `forge_lint`,
+`forge_add_project`, `forge_learn_style`,
 `forge_project_assets`, `forge_status` (also reports route keys and the Aseprite path).
 
 For a connection that can only inspect existing art, use `./forge.sh mcp-readonly`.
@@ -200,6 +209,7 @@ forge/rd_fixer.py      free neural reconstruction with bounded, alpha-preserving
 forge/fixer_workflow.py GPT reference → fixer → QA/review handoff; optional targeted repair
 forge/aseprite.py      layered .aseprite documents, flatten back, open in Aseprite (batch mode)
 forge/aseprite_ops.py  Aseprite-engine passes: dither, quantize, blend (see ASEPRITE-NOTES.md)
+forge/animation.py     Aseprite-backed animation: frames + tag, sprite-sheet + GIF export
 forge/editors.py       open a result in Aseprite and/or Piskel; import an edited document
 forge/projects.py      pull art + learn style from existing project folders (read-only)
 forge/server.py        local HTTP server for the editor panel

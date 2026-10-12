@@ -89,7 +89,7 @@ def available() -> bool:
     return aseprite.find_executable() is not None
 
 
-def _run(script: str, params: dict[str, str], timeout: int = 120) -> None:
+def run_batch(script: str, params: dict[str, str], timeout: int = 120) -> None:
     exe = aseprite.find_executable()
     if not exe:
         raise AsepriteError("Aseprite not found; install it or set ASEPRITE_PATH")
@@ -149,7 +149,7 @@ def dither(sprite: Sprite, algorithm: str = "ordered", palette=None, matrix: str
         sprite.save(src)
         if cols:
             pal.write_text(json.dumps(cols))
-        _run(_DITHER_LUA, {"input": str(src), "output": str(out),
+        run_batch(_DITHER_LUA, {"input": str(src), "output": str(out),
                            "palette": str(pal) if cols else "",
                            "algorithm": algorithm,
                            "matrix": str(Path(matrix).resolve()) if matrix else ""}, timeout)
@@ -172,7 +172,7 @@ def quantize(sprite: Sprite, colors: int = 16, dither: str | None = None,
         tmpdir = Path(tmp)
         src, out = tmpdir / "in.png", tmpdir / "out.png"
         sprite.save(src)
-        _run(_QUANTIZE_LUA, {"input": str(src), "output": str(out), "colors": str(int(colors)),
+        run_batch(_QUANTIZE_LUA, {"input": str(src), "output": str(out), "colors": str(int(colors)),
                              "algorithm": dither or ""}, timeout)
         return _load_result(out)
 
@@ -188,6 +188,6 @@ def blend(base: Sprite, top: Sprite, mode: str = "normal", opacity: float = 1.0,
         src, tp, out = tmpdir / "base.png", tmpdir / "top.png", tmpdir / "out.png"
         base.save(src)
         top.save(tp)
-        _run(_BLEND_LUA, {"input": str(src), "top": str(tp), "output": str(out),
+        run_batch(_BLEND_LUA, {"input": str(src), "top": str(tp), "output": str(out),
                           "mode": BLEND_MODES[mode], "opacity": str(level), "name": mode}, timeout)
         return _load_result(out)

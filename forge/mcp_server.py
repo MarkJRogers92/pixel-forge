@@ -37,7 +37,8 @@ server = MCPServer(
         "forge_lint reports located problems with the same checks as Aseprite's validate. "
         "forge_dither, forge_quantize and forge_blend run Aseprite's own engine on a PNG "
         "(ordered/error-diffusion dithering onto a palette, colour quantization, and blend-mode "
-        "compositing); they need Aseprite installed."),
+        "compositing); forge_animate builds a tagged animation from frame PNGs and exports a "
+        "sprite sheet + JSON atlas + GIF. All need Aseprite installed."),
 )
 
 
@@ -253,6 +254,26 @@ def forge_blend(base_png: str, top_png: str, mode: str = "multiply", opacity: fl
         raise ValueError("blend needs both images at the same size")
     return _save_pass(aseprite_ops.blend(base, top, mode, opacity),
                       f"blend {mode} " + Path(base_png).stem, out, save, {"mode": mode, "opacity": opacity})
+
+
+@server.tool(description=(
+    "Build an animation from an ordered list of frame PNGs (all the same size) with Aseprite: "
+    "sets each frame's duration from `fps`, tags the loop (tag name + loop 'forward'/'reverse'/"
+    "'pingpong'), and writes into out_dir a sprite-sheet texture + JSON atlas, an animated GIF "
+    "for review, and (with save_project) an editable .aseprite. sheet_type: horizontal/vertical/"
+    "packed/rows/columns/grid. Returns the written paths; the sheet is shown as an image."))
+def forge_animate(frames: list[str], out_dir: str, tag: str = "animation", fps: float = 10.0,
+                  loop: str = "forward", sheet_type: str = "horizontal",
+                  data_format: str = "json-hash", make_gif: bool = True,
+                  save_project: bool = False) -> list:
+    from . import animation
+    sprites = [Sprite.from_image(load_image(Path(p).expanduser().read_bytes())) for p in frames]
+    res = animation.animate(sprites, out_dir, tag=tag, fps=fps, loop=loop, sheet_type=sheet_type,
+                            data_format=data_format,
+                            gif_name="animation.gif" if make_gif else None,
+                            project_name="animation.aseprite" if save_project else None)
+    return [json.dumps(res, default=str),
+            Image(data=Path(res["sheet"]).read_bytes(), format="png")]
 
 
 @server.tool(description="Register an existing folder of pixel art (read-only) so its style and assets can be used.")

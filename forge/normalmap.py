@@ -164,12 +164,19 @@ def sobel(field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def normal_map(source, *, height_source: str = "alpha", blur: float = 0.0,
                invert_y: bool = False, transparent_background: bool = False,
-               rim: float = 0.0, contour: float = 0.5) -> Image.Image:
+               rim: float = 0.0, contour: float = 0.5, detail: float = 0.0) -> Image.Image:
     """RGBA normal map for `source` (a Sprite, image path, PIL image or RGBA array).
 
     `rim` > 0 replaces the (usually flat) alpha height with SI's bevel dome of
     that strength, which is what gives a solid sprite volume. `blur` smooths the
     height before the gradient; SI's base pass uses 0.
+
+    `detail` > 0 adds that share of the sprite's own **luminance** on top of the
+    height, so interior features (a keypad, a handset, a painted panel) tilt as
+    well. Height from alpha alone is silhouette-only: the whole interior of a
+    solid shape sits on one dome and reads flat. This is an addition of ours, not
+    something SpriteIlluminator does; it is opt-in and off by default because dark
+    outlines then read as grooves.
 
     Every channel uses the standard engine encoding (``2n-1``, so flat is
     RGB(128,128,255) and blue never drops below 128). SI additionally offers a
@@ -180,10 +187,14 @@ def normal_map(source, *, height_source: str = "alpha", blur: float = 0.0,
     """
     if rim < 0:
         raise ValueError("rim must be >= 0")
+    if detail < 0:
+        raise ValueError("detail must be >= 0")
     if not 0 < contour <= 1:
         raise ValueError("contour must be in (0, 1]")
     rgba = to_rgba(source)
     h = rim_height(rgba, rim, contour) if rim > 0 else height_field(rgba, height_source)
+    if detail > 0:
+        h = h + F32(detail) * height_field(rgba, "luma")
     if blur > 0:
         h = gaussian_blur(h, blur)
 

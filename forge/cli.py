@@ -21,6 +21,7 @@
   animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
   normalmap SPRITE                   write a normal map for 2D lighting (alpha height, optional bevel)
   lit SPRITE                         render a lit preview from a sprite + normal map (+ engine shader)
+  godot-frames ATLAS --texture P     sheet atlas -> Godot 4 SpriteFrames .tres (trim-aware)
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -330,6 +331,9 @@ def main(argv=None):
     nm.add_argument("--rim", type=float, default=0.0,
                     help="bevel dome strength (0-1) for solid art, which is otherwise flat")
     nm.add_argument("--contour", type=float, default=0.5, help="how far the dome reaches in")
+    nm.add_argument("--detail", type=float, default=0.0,
+                    help="add that share of the sprite's luminance on top of the height, so "
+                         "interior features tilt instead of sitting on one flat dome")
     nm.add_argument("--invert-y", action="store_true", help="flip the green channel")
     nm.add_argument("--luma", action="store_true",
                     help="take height from luminance instead of alpha (emboss-like)")
@@ -349,6 +353,19 @@ def main(argv=None):
     lit.add_argument("--engine", choices=["godot"], default=None,
                      help="also write the engine's shader + light parameter JSON")
     lit.add_argument("-o", "--out", help="output PNG (default: <sprite>_lit.png)")
+    lit.add_argument("--gif", help="also write a GIF of the light orbiting the sprite")
+    lit.add_argument("--frames", type=int, default=16, help="frames in the orbit GIF")
+    lit.add_argument("--radius", type=float, default=0.35, help="orbit radius, normalized")
+    lit.add_argument("--turns", type=float, default=1.0, help="revolutions per loop")
+    gf = sub.add_parser("godot-frames",
+                        help="turn a sheet's JSON atlas into a Godot 4 SpriteFrames resource")
+    gf.add_argument("atlas", help="the sheet JSON written by `forge animate`")
+    gf.add_argument("--texture", required=True,
+                    help="the sheet PNG's path inside the Godot project (res://...)")
+    gf.add_argument("-o", "--out", required=True, help="output .tres")
+    gf.add_argument("--animation", default="default", help="animation name")
+    gf.add_argument("--fps", type=float, default=10.0)
+    gf.add_argument("--no-loop", action="store_true")
     an.add_argument("--no-gif", action="store_true")
     an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
 
@@ -440,17 +457,27 @@ def main(argv=None):
         dump({"normal": normalmap.save_normal_map(
             src, out, height_source="luma" if a.luma else "alpha", blur=a.blur,
             invert_y=a.invert_y, transparent_background=a.transparent,
-            rim=a.rim, contour=a.contour), "source": str(src)})
+            rim=a.rim, contour=a.contour, detail=a.detail), "source": str(src)})
     elif a.cmd == "lit":
         src = _sprite_source(a.sprite)
         normal = _sprite_source(a.normal) if a.normal else Path(src).with_name(
             Path(src).stem + "_n.png")
         if not Path(normal).exists():
             raise SystemExit(f"no normal map at {normal}; run `forge normalmap {a.sprite}` first")
-        out = a.out or str(Path(src).with_name(Path(src).stem + "_lit.png"))
-        dump(lighting.lit_sprite(src, normal, out, light=tuple(a.light), height=a.height,
-                                 color=a.color, brightness=a.brightness, ambient=a.ambient,
-                                 engine=a.engine))
+        common = {"height": a.height, "color": a.color, "brightness": a.brightness,
+                  "ambient": a.ambient}
+        if a.gif:
+            result = lighting.lit_animation(src, normal, a.gif, frames=a.frames, fps=12.0,
+                                            radius=a.radius, turns=a.turns, **common)
+            dump(result)
+        else:
+            out = a.out or str(Path(src).with_name(Path(src).stem + "_lit.png"))
+            dump(lighting.lit_sprite(src, normal, out, light=tuple(a.light), engine=a.engine,
+                                     **common))
+    elif a.cmd == "godot-frames":
+        from . import godot
+        dump(godot.sprite_frames_tres(a.atlas, a.texture, a.out, animation=a.animation,
+                                      fps=a.fps, loop=not a.no_loop))
     elif a.cmd == "open":
         dump(editors.open_item(a.item, a.editor))
     elif a.cmd == "from-aseprite":

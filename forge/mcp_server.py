@@ -315,17 +315,19 @@ def forge_animate(frames: list[str], out_dir: str, tag: str = "animation", fps: 
     "blur smooths the height first; luma takes height from luminance instead of alpha; "
     "transparent keeps non-sprite pixels transparent; invert_y flips the green channel for a "
     "consumer that needs it. Emission follows the standard engine convention (flat is "
-    "RGB(128,128,255), blue >= 128), i.e. what Godot's hint_normal decodes. Returns the path of "
-    "the normal map and shows it."))
+    "RGB(128,128,255), blue >= 128), i.e. what Godot's hint_normal decodes. detail>0 adds that "
+    "share of the sprite's luminance on top of the height, so interior features tilt instead of "
+    "sitting on one flat dome (of ours, not SpriteIlluminator's). Returns the path of the normal "
+    "map and shows it."))
 def forge_normalmap(sprite: str, out: str | None = None, blur: float = 0.0, rim: float = 0.0,
                     contour: float = 0.5, invert_y: bool = False, luma: bool = False,
-                    transparent: bool = False) -> list:
+                    transparent: bool = False, detail: float = 0.0) -> list:
     from . import normalmap
     src = Path(sprite).expanduser()
     dst = Path(out).expanduser() if out else src.with_name(src.stem + "_n.png")
     normalmap.save_normal_map(src, dst, height_source="luma" if luma else "alpha", blur=blur,
                               invert_y=invert_y, transparent_background=transparent,
-                              rim=rim, contour=contour)
+                              rim=rim, contour=contour, detail=detail)
     return [json.dumps({"normal": str(dst), "source": str(src)}), _image_of(dst)]
 
 
@@ -333,21 +335,40 @@ def forge_normalmap(sprite: str, out: str | None = None, blur: float = 0.0, rim:
     "Render a sprite lit by one 2D light, using the sprite's normal map (forge_normalmap). "
     "light is the normalized position (x right, y down); brightness is 0-100 like "
     "SpriteIlluminator; colour/ambient alpha is intensity. With engine='godot' it also writes the "
-    "canvas-item shader and a JSON of the uniform values to drive it at runtime. Returns the "
-    "written paths and shows the lit sprite."))
+    "canvas-item shader and a JSON of the uniform values to drive it at runtime. Set gif to also "
+    "write a loop of the light orbiting the sprite (frames/radius/turns). Returns the written "
+    "paths and shows the result."))
 def forge_lit_preview(sprite: str, normal: str | None = None, light: list[float] | None = None,
                       height: float = lighting.DEFAULT_HEIGHT, color: str = "#ffffff",
                       brightness: float = lighting.DEFAULT_BRIGHTNESS,
                       ambient: str = "#80808080", engine: str | None = None,
-                      out: str | None = None) -> list:
+                      out: str | None = None, gif: str | None = None, frames: int = 16,
+                      radius: float = 0.35, turns: float = 1.0) -> list:
     src = Path(sprite).expanduser()
     nrm = Path(normal).expanduser() if normal else src.with_name(src.stem + "_n.png")
     if not nrm.exists():
         raise FileNotFoundError(f"no normal map at {nrm}; call forge_normalmap first")
+    if gif:
+        res = lighting.lit_animation(src, nrm, Path(gif).expanduser(), frames=frames,
+                                     radius=radius, turns=turns, height=height, color=color,
+                                     brightness=brightness, ambient=ambient)
+        return [json.dumps(res, default=str), _image_of(res["gif"])]
     dst = Path(out).expanduser() if out else src.with_name(src.stem + "_lit.png")
     res = lighting.lit_sprite(src, nrm, dst, light=tuple(light or (0.5, 0.5)), height=height,
                               color=color, brightness=brightness, ambient=ambient, engine=engine)
     return [json.dumps(res, default=str), _image_of(res["lit"])]
+
+
+@server.tool(description=(
+    "Turn the JSON atlas written by forge_animate into a Godot 4 SpriteFrames .tres with one "
+    "AtlasTexture per frame. Pass the sheet's project path for texture (res://...), and the .tres "
+    "must be written inside that Godot project. A trimmed atlas keeps each frame registered to its "
+    "untrimmed canvas through the AtlasTexture margin, so trimming does not shift the art."))
+def forge_godot_frames(atlas: str, texture: str, out: str, animation: str = "default",
+                       fps: float = 10.0, loop: bool = True) -> str:
+    from . import godot
+    return json.dumps(godot.sprite_frames_tres(atlas, texture, out, animation=animation,
+                                               fps=fps, loop=loop))
 
 
 @server.tool(description="Register an existing folder of pixel art (read-only) so its style and assets can be used.")

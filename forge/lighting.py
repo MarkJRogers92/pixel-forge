@@ -21,6 +21,7 @@ the JSON a scene needs to drive them.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -150,6 +151,35 @@ def lit_sprite(source, normal, out_png, *, light=(0.5, 0.5), height: float = DEF
         shader_path.write_text(godot_shader())
         result.update({"params": str(json_path), "shader": str(shader_path)})
     return result
+
+
+def lit_animation(source, normal, out_gif, *, frames: int = 16, fps: float = 12.0,
+                  radius: float = 0.35, turns: float = 1.0, phase: float = 0.0,
+                  height: float = DEFAULT_HEIGHT, color=DEFAULT_LIGHT_COLOR,
+                  brightness: float = DEFAULT_BRIGHTNESS, ambient=DEFAULT_AMBIENT,
+                  background=DEFAULT_BACKGROUND) -> dict:
+    """A GIF of the light orbiting the sprite: SI's "export animation of lit sprite".
+
+    `frames` images are rendered with the light on a circle of `radius` (in
+    normalized sprite units) around the centre, `turns` revolutions per loop,
+    starting at `phase` radians.
+    """
+    if frames < 2:
+        raise ValueError("frames must be at least 2")
+    if fps <= 0:
+        raise ValueError("fps must be positive")
+    gif = Path(out_gif)
+    gif.parent.mkdir(parents=True, exist_ok=True)
+    images = []
+    for i in range(frames):
+        angle = phase + 2.0 * math.pi * turns * i / frames
+        light = (0.5 + radius * math.cos(angle), 0.5 + radius * math.sin(angle))
+        images.append(lit_preview(source, normal, light=light, height=height, color=color,
+                                  brightness=brightness, ambient=ambient, background=background,
+                                  flatten=True).convert("P", palette=Image.ADAPTIVE))
+    images[0].save(gif, save_all=True, append_images=images[1:],
+                   duration=round(1000.0 / fps), loop=0, optimize=False)
+    return {"gif": str(gif), "frames": frames, "fps": fps, "radius": radius, "turns": turns}
 
 
 def godot_shader() -> str:

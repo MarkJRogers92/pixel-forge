@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 import shutil
 import subprocess
+from pathlib import Path
+
 from PIL import Image
 
 from forge import lighting, normalmap
@@ -248,6 +250,54 @@ def test_lit_sprite_writes_the_engine_files(tmp_path):
 def test_mismatched_normal_size_is_rejected():
     with pytest.raises(ValueError):
         lighting.lit_preview(square(16), normalmap.normal_map(square(8)))
+
+
+def test_detail_adds_interior_relief_on_top_of_the_dome():
+    # a dark panel and a bright bezel inside one solid shape
+    s = Sprite(32, 32, {"d": "#202020", "b": "#e0e0e0"})
+    for y in range(4, 28):
+        for x in range(4, 28):
+            s.set(x, y, "b" if x < 16 else "d")
+    plain = rgba_of(normalmap.normal_map(s, rim=0.8, blur=1.0))
+    detailed = rgba_of(normalmap.normal_map(s, rim=0.8, blur=1.0, detail=0.6))
+    interior = (slice(10, 14), slice(10, 22))
+    # silhouette-only height leaves the interior on one dome: nearly flat
+    assert np.all(np.abs(plain[..., :2][interior] - 128) <= 3)
+    # with detail, the light/dark boundary tilts
+    assert np.abs(detailed[..., 0][interior] - 128).max() > 8
+
+
+def test_detail_is_off_by_default_and_rejects_negatives():
+    s = square(16, inset=4)
+    assert np.array_equal(rgba_of(normalmap.normal_map(s, rim=0.5)),
+                          rgba_of(normalmap.normal_map(s, rim=0.5, detail=0.0)))
+    with pytest.raises(ValueError):
+        normalmap.normal_map(s, detail=-0.1)
+
+
+# ---- lit animation ---------------------------------------------------------
+
+def test_lit_animation_writes_a_gif_whose_light_moves(tmp_path):
+    from PIL import ImageSequence
+    sprite = square(32, inset=2)
+    normal = normalmap.normal_map(sprite, rim=0.8, blur=1.0)
+    res = lighting.lit_animation(sprite, normal, tmp_path / "orbit.gif", frames=8, fps=10)
+    assert res["frames"] == 8 and Path(res["gif"]).read_bytes()[:6] in (b"GIF89a", b"GIF87a")
+    seq = [np.asarray(f.convert("L"), dtype=float) for f in ImageSequence.Iterator(Image.open(res["gif"]))]
+    assert len(seq) == 8
+    # the light orbits, so the two halves of the loop must differ
+    assert not np.allclose(seq[0], seq[4], atol=1.0)
+    # and each frame is brighter somewhere different
+    brightest = [int(np.unravel_index(f.argmax(), f.shape)[0]) for f in seq]
+    assert len(set(brightest)) > 1
+
+
+def test_lit_animation_validates_its_arguments(tmp_path):
+    sprite, normal = square(8), normalmap.normal_map(square(8))
+    with pytest.raises(ValueError):
+        lighting.lit_animation(sprite, normal, tmp_path / "x.gif", frames=1)
+    with pytest.raises(ValueError):
+        lighting.lit_animation(sprite, normal, tmp_path / "x.gif", fps=0)
 
 
 # ---- the shipped Godot shader ----------------------------------------------

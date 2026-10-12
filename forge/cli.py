@@ -15,6 +15,9 @@
   lint sprite.png                    located pixel-art problems (same checks as Aseprite's validate)
   open LIBRARY_ID [--editor E]       open a result in aseprite (layered), piskel, or both
   from-aseprite DOC.aseprite         an edited document back into the library, checked
+  dither IMAGE                       dither onto a palette with Aseprite's engine (ordered/error-diffusion)
+  quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
+  blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -212,6 +215,23 @@ def main(argv=None):
     fa = sub.add_parser("from-aseprite"); fa.add_argument("document")
     fa.add_argument("-o", "--out"); fa.add_argument("--polish", action="store_true"); fa.add_argument("--name")
 
+    from .aseprite_ops import ALGORITHMS as _ALGOS, BLEND_MODES as _MODES
+    di = sub.add_parser("dither", help="dither an image onto a palette with Aseprite's engine")
+    di.add_argument("image"); di.add_argument("-o", "--out")
+    di.add_argument("--algo", default="ordered", choices=list(_ALGOS))
+    di.add_argument("--palette", help="comma-separated hex colours (#rrggbb)")
+    di.add_argument("--profile", help="use a style profile's palette instead")
+    di.add_argument("--matrix", help="Aseprite dithering-matrix file (ordered algorithm only)")
+    qz = sub.add_parser("quantize", help="reduce colours with Aseprite's quantizer")
+    qz.add_argument("image"); qz.add_argument("-o", "--out")
+    qz.add_argument("--colors", type=int, default=16)
+    qz.add_argument("--dither", choices=list(_ALGOS), default=None,
+                    help="dither while quantizing (default: flat nearest-colour mapping)")
+    bl = sub.add_parser("blend", help="composite two images with an Aseprite blend mode")
+    bl.add_argument("base"); bl.add_argument("top"); bl.add_argument("-o", "--out")
+    bl.add_argument("--mode", default="multiply", choices=sorted(_MODES))
+    bl.add_argument("--opacity", type=float, default=1.0)
+
     p = sub.add_parser("project")
     psub = p.add_subparsers(dest="pcmd", required=True)
     pa = psub.add_parser("add"); pa.add_argument("path"); pa.add_argument("--name"); pa.add_argument("--id")
@@ -295,6 +315,21 @@ def main(argv=None):
         dump(editors.open_item(a.item, a.editor))
     elif a.cmd == "from-aseprite":
         dump(editors.import_from_aseprite(Path(a.document), a.out, polish=a.polish, name=a.name))
+    elif a.cmd in ("dither", "quantize", "blend"):
+        from . import aseprite_ops
+        load = lambda p: Sprite.from_image(load_image(Path(p).read_bytes()))
+        if a.cmd == "dither":
+            palette = [c.strip() for c in a.palette.split(",") if c.strip()] if a.palette else None
+            if palette is None and a.profile:
+                palette = list((profiles.load(a.profile) or {}).get("palette", {}).values()) or None
+            sprite, src = aseprite_ops.dither(load(a.image), a.algo, palette=palette, matrix=a.matrix), a.image
+        elif a.cmd == "quantize":
+            sprite, src = aseprite_ops.quantize(load(a.image), a.colors, dither=a.dither), a.image
+        else:
+            sprite, src = aseprite_ops.blend(load(a.base), load(a.top), a.mode, a.opacity), a.base
+        out = Path(a.out) if a.out else Path(src).with_name(Path(src).stem + f"-{a.cmd}.png")
+        sprite.save(out)
+        dump({"png": str(out), "size": [sprite.width, sprite.height], "qa": qa.check(sprite)})
     elif a.cmd == "project":
         if a.pcmd == "add":
             dump(projects.register(a.path, a.name, a.id))

@@ -34,7 +34,10 @@ server = MCPServer(
         "forge_make can also take drafts from PixelLab or Retro Diffusion (routes, spends credits) "
         "and open the result in Aseprite as a layered document (open_in). After editing in "
         "Aseprite, forge_from_aseprite brings the document back, checked, as a new version. "
-        "forge_lint reports located problems with the same checks as Aseprite's validate."),
+        "forge_lint reports located problems with the same checks as Aseprite's validate. "
+        "forge_dither, forge_quantize and forge_blend run Aseprite's own engine on a PNG "
+        "(ordered/error-diffusion dithering onto a palette, colour quantization, and blend-mode "
+        "compositing); they need Aseprite installed."),
 )
 
 
@@ -190,6 +193,66 @@ def forge_lint(png: str) -> str:
     from PIL import Image as PILImage
     from . import lint
     return json.dumps(lint.lint_image(PILImage.open(Path(png).expanduser())))
+
+
+def _save_pass(sprite: Sprite, name: str, out: str | None, save: bool, meta: dict) -> list:
+    info = {"size": [sprite.width, sprite.height], "qa": qa.check(sprite)}
+    if save:
+        item_id, d = library.new_dir(name)
+        library.save_result(d, sprite, {"kind": "aseprite-pass", "prompt": name, **meta,
+                                        "size": [sprite.width, sprite.height]})
+        info["library_id"] = item_id
+        info["png"] = str(d / "sprite.png")
+    if out:
+        dst = Path(out).expanduser()
+        if dst.exists():
+            raise FileExistsError(f"{dst} exists; not overwriting")
+        sprite.save(dst)
+        info["exported"] = str(dst)
+    return [json.dumps(info, default=str), _preview(sprite)]
+
+
+@server.tool(description=(
+    "Dither an image with Aseprite's engine onto a palette: algorithm 'ordered', 'error-diffusion' "
+    "or 'threshold'. palette: list of hex colours; if omitted, use the named style `profile`'s "
+    "palette (or Aseprite's own generated palette). matrix: an Aseprite dithering-matrix file. "
+    "Keeps the size. Saves a new library item unless save=false."))
+def forge_dither(png: str, algorithm: str = "ordered", palette: list[str] | None = None,
+                 profile: str | None = None, matrix: str | None = None,
+                 out: str | None = None, save: bool = True) -> list:
+    from . import aseprite_ops
+    s = Sprite.from_image(load_image(Path(png).expanduser().read_bytes()))
+    pal = palette or list((profiles.load(profile) or {}).get("palette", {}).values()) or None
+    return _save_pass(aseprite_ops.dither(s, algorithm, palette=pal, matrix=matrix),
+                      "dither " + Path(png).stem, out, save, {"algorithm": algorithm})
+
+
+@server.tool(description=(
+    "Reduce an image to at most `colors` colours with Aseprite's quantizer. dither: optional "
+    "'ordered'/'error-diffusion'/'threshold' when snapping to the reduced palette (default flat "
+    "nearest-colour). Keeps the size. Saves a new library item unless save=false."))
+def forge_quantize(png: str, colors: int = 16, dither: str | None = None,
+                   out: str | None = None, save: bool = True) -> list:
+    from . import aseprite_ops
+    s = Sprite.from_image(load_image(Path(png).expanduser().read_bytes()))
+    return _save_pass(aseprite_ops.quantize(s, colors, dither=dither),
+                      f"quantize {colors} " + Path(png).stem, out, save, {"colors": colors, "dither": dither})
+
+
+@server.tool(description=(
+    "Composite `top` over `base` with an Aseprite blend mode (normal, multiply, screen, overlay, "
+    "darken, lighten, color-dodge/burn, hard/soft-light, difference, exclusion, addition, subtract, "
+    "divide, hue, saturation, color, luminosity) and opacity 0..1. Both must match in size. "
+    "Note: a blend can create colours beyond the two inputs. Saves a new library item unless save=false."))
+def forge_blend(base_png: str, top_png: str, mode: str = "multiply", opacity: float = 1.0,
+                out: str | None = None, save: bool = True) -> list:
+    from . import aseprite_ops
+    base = Sprite.from_image(load_image(Path(base_png).expanduser().read_bytes()))
+    top = Sprite.from_image(load_image(Path(top_png).expanduser().read_bytes()))
+    if (base.width, base.height) != (top.width, top.height):
+        raise ValueError("blend needs both images at the same size")
+    return _save_pass(aseprite_ops.blend(base, top, mode, opacity),
+                      f"blend {mode} " + Path(base_png).stem, out, save, {"mode": mode, "opacity": opacity})
 
 
 @server.tool(description="Register an existing folder of pixel art (read-only) so its style and assets can be used.")

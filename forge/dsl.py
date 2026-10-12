@@ -653,6 +653,38 @@ def op_material(cv, op):
         OPS[step["op"]](cv, sub)
 
 
+# ---------------------------------------------------------- Aseprite passes
+def _aseprite_replace(cv, run):
+    """Run an Aseprite pass on the canvas, keeping its size; failures become op errors."""
+    from .aseprite_ops import AsepriteError
+    src = cv.s
+    try:
+        result = run(src)
+    except AsepriteError as e:
+        raise ValueError(f"Aseprite pass failed: {e}")
+    if (result.width, result.height) != (src.width, src.height):
+        raise ValueError(f"Aseprite pass changed the canvas ({src.width}x{src.height} "
+                         f"-> {result.width}x{result.height})")
+    src.palette, src.grid = result.palette, result.grid
+
+
+def op_aseprite_dither(cv, op):
+    """Dither the whole canvas onto a palette with Aseprite's engine."""
+    from . import aseprite_ops
+    palette = op.get("palette")
+    if palette is None:
+        palette = list(dict.fromkeys(cv.s.palette.values())) or None
+    _aseprite_replace(cv, lambda s: aseprite_ops.dither(
+        s, algorithm=op.get("algorithm", "ordered"), palette=palette, matrix=op.get("matrix")))
+
+
+def op_aseprite_quantize(cv, op):
+    """Reduce the canvas to at most `colors` colours with Aseprite's quantizer."""
+    from . import aseprite_ops
+    _aseprite_replace(cv, lambda s: aseprite_ops.quantize(
+        s, colors=int(op.get("colors", 16)), dither=op.get("dither")))
+
+
 OPS = {
     "rect": op_rect, "ellipse": op_ellipse, "circle": op_ellipse, "poly": op_poly,
     "line": op_line, "pixels": op_pixels, "points": op_points, "fill": op_fill,
@@ -661,6 +693,7 @@ OPS = {
     "clip": op_clip, "shift": op_shift,
     "light": op_light, "gradient": op_gradient, "cast_shadow": op_cast_shadow, "rim": op_rim,
     "glare": op_glare, "wear": op_wear, "material": op_material,
+    "aseprite_dither": op_aseprite_dither, "aseprite_quantize": op_aseprite_quantize,
 }
 
 

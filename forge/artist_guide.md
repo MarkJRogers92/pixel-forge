@@ -60,6 +60,18 @@ All take "on" (a key or list of keys to affect) and an optional x/y/w/h region.
       clustered damage instead of single-pixel noise.
 - {"op":"shift","dx":1,"dy":0}                                  move everything
 
+## Aseprite-backed ops (they call the installed Aseprite — use them last)
+These hand the finished canvas to Aseprite 1.3's own engine. Each costs one
+subprocess call and keeps the canvas size, so place them at the very end of a
+program and only when you actually want Aseprite's result.
+- {"op":"aseprite_quantize","colors":16,"dither":null}
+      reduce the canvas to at most `colors` colours. dither = null (flat nearest
+      colour), "ordered", "error-diffusion" or "threshold".
+- {"op":"aseprite_dither","algorithm":"ordered","palette":["#101018","#c03040","#f0e8c0"]}
+      remap the whole canvas onto `palette` (a list of hex colours; omit to use the
+      program's own palette) with Aseprite's ordered or error-diffusion dithering.
+      Use it to force a busy render onto a tight style palette.
+
 # How to draw well
 1. Silhouette first. The subject must read as a solid dark shape at 1x. Fill 60-90%
    of the canvas height for characters/props; leave 1px margin for the outline.

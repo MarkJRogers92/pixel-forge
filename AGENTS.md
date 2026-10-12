@@ -50,13 +50,17 @@ Other commands:
 ./forge.sh open <library-id> --editor aseprite     # or piskel / both
 ./forge.sh from-aseprite <file.aseprite> -o out.png --name "..."   # edited art back, checked, new library version
 ./forge.sh cleanup any_image.png -W 32 -H 32 --colors 16           # any image -> true pixel art
+./forge.sh quantize sprite.png --colors 12 -o reduced.png          # Aseprite engine: reduce colours
+./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png   # Aseprite dithering
+./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png                 # Aseprite blend
 ./forge.sh project list | project learn dead-mall  # registered games / refresh a style profile
 ./forge.sh serve                                   # browser editor (Piskel + AI panel) on :9002
 ```
 
 MCP (same abilities as tools): `forge_make` (`routes`, `open_in`, `combine`),
 `forge_open`, `forge_from_aseprite`, `forge_lint`, `forge_render` (+ `forge_guide`
-to draw directly), `forge_pixelize`, `forge_status`, `forge_project_assets`.
+to draw directly), `forge_pixelize`, `forge_dither` / `forge_quantize` /
+`forge_blend` (Aseprite engine passes), `forge_status`, `forge_project_assets`.
 
 ## Workflow for a new asset
 

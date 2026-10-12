@@ -128,6 +128,17 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
 - **Lint** (`forge lint`, `forge_lint`, and in every QA report): stray pixels, gaps in
   the outline, banding, soft alpha and near-duplicate colours, ported from Aseprite AI
   Artist's `validate` so both canvases give the same verdict.
+- **Aseprite-engine passes** (`forge dither|quantize|blend`, and the DSL ops
+  `aseprite_dither`/`aseprite_quantize`): hand a sprite to the real Aseprite 1.3 engine
+  for ordered/error-diffusion/threshold dithering onto an exact palette, colour
+  quantization, and blend-mode compositing. Installed Aseprite is required; the exact
+  API used was reverse-engineered and is recorded in [ASEPRITE-NOTES.md](ASEPRITE-NOTES.md).
+
+  ```bash
+  ./forge.sh quantize sprite.png --colors 12 -o reduced.png
+  ./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png
+  ./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png
+  ```
 
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark
@@ -143,7 +154,8 @@ Tools: `forge_prepare` (preferred; returns the visual review sheet), `forge_repa
 (one optional Claude Opus patch), `forge_make` (automatic; `routes`, `open_in`),
 `forge_guide` + `forge_render` (the
 calling agent draws itself and sees the image), `forge_pixelize`, `forge_open`,
-`forge_from_aseprite`, `forge_lint`, `forge_add_project`, `forge_learn_style`,
+`forge_from_aseprite`, `forge_dither` / `forge_quantize` / `forge_blend` (Aseprite
+engine passes), `forge_lint`, `forge_add_project`, `forge_learn_style`,
 `forge_project_assets`, `forge_status` (also reports route keys and the Aseprite path).
 
 For a connection that can only inspect existing art, use `./forge.sh mcp-readonly`.
@@ -187,6 +199,7 @@ forge/routes.py        PixelLab and Retro Diffusion draft routes
 forge/rd_fixer.py      free neural reconstruction with bounded, alpha-preserving uploads
 forge/fixer_workflow.py GPT reference → fixer → QA/review handoff; optional targeted repair
 forge/aseprite.py      layered .aseprite documents, flatten back, open in Aseprite (batch mode)
+forge/aseprite_ops.py  Aseprite-engine passes: dither, quantize, blend (see ASEPRITE-NOTES.md)
 forge/editors.py       open a result in Aseprite and/or Piskel; import an edited document
 forge/projects.py      pull art + learn style from existing project folders (read-only)
 forge/server.py        local HTTP server for the editor panel

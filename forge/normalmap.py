@@ -13,10 +13,12 @@ sprites are palette-indexed and cannot hold it.
 Two deliberate deviations from SpriteIlluminator, both so the output works in a
 game engine without a flip:
 
-* We emit the **standard convention** (G < 128 means the surface faces *up* in
-  screen space). SI stores the negated value and negates it again when it lights
-  the sprite; our own `forge.lighting.lit_preview` decodes ours directly. Pass
-  `invert_y=True` for a consumer that expects SI's encoding.
+* We emit the **standard convention**: **G > 128 means the surface faces *up*** in
+  screen space (the top flank of a shape rises away from the viewer, so its stored
+  green is above the flat 128 - see `test_y_convention_a_top_edge_faces_up`). SI
+  stores the negated value and negates it again when it lights the sprite; our own
+  `forge.lighting.lit_preview` decodes ours directly. Pass `invert_y=True` for a
+  consumer that expects SI's encoding.
 * The gradient is the standard 3x3 Sobel. SI's `sobelLine` differs by a
   one-column offset; the 1/8 scale and edge replication are the same.
 

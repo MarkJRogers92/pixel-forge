@@ -10,7 +10,7 @@ There is no specular, gloss, roughness or emissive term — SI has none, so this
 does not either. SI uploads its brightness as ``value / 100``; we take the same
 0..100 shape so its parameters transfer directly.
 
-Normals are decoded the standard way (see `forge.normalmap`): G < 128 faces up,
+Normals are decoded the standard way (see `forge.normalmap`): G > 128 faces up,
 so a light above a sprite brightens its top. Height is the light's Z: bigger
 values pick out flatter, more head-on surfaces.
 

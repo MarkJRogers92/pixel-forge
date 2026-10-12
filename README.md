@@ -155,9 +155,21 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   (`ensureFrames(key, frameWidth, frameHeight, count)`), plus the exact load/add/animate
   snippets.
 
+  **Sheet packing** (off by default; measured on Aseprite 1.3.18.6): `--trim` crops each
+  frame's transparent border and records where it was — on a 16-sprite corpus with
+  transparent margins the sheet came out **75% smaller** (256x288 → 167x109). `--extrude`
+  duplicates each frame's edge pixels 1px outwards and should be used *with* `--trim`,
+  otherwise the neighbouring frame bleeds in at the border (it costs ~6% of the sheet area
+  and is still far smaller than untrimmed). `--shape-padding` / `--border-padding` /
+  `--inner-padding` add spacing, `--power-of-two` rounds the sheet up, `--merge-duplicates`
+  stores identical frames once. With `--trim` the atlas and the descriptor carry each
+  frame's `spriteSourceSize` offset, and the Phaser `addFrames` snippet switches from the
+  uniform-strip form to per-frame rects.
+
   ```bash
   ./forge.sh animate frame0.png frame1.png frame2.png -o out/clip --tag flicker --fps 12 --loop pingpong
   ./forge.sh animate --library 20261012-sign-off --library 20261012-sign-on -o out/sign --game phaser
+  ./forge.sh animate --library s1 --library s2 -o out/clip --type packed --trim --extrude --shape-padding 2
   ```
 
 ### Automatic cleanup (every result)

@@ -297,6 +297,19 @@ def main(argv=None):
     an.add_argument("--data-format", default="json-hash", choices=list(animation.DATA_FORMATS))
     an.add_argument("--game", choices=list(animation.GAMES),
                     help="also write a drop-in descriptor (e.g. 'phaser') for that engine")
+    an.add_argument("--trim", action="store_true",
+                    help="crop each frame's transparent border (much smaller sheet; the "
+                         "descriptor then records each frame's offset)")
+    an.add_argument("--extrude", action="store_true",
+                    help="duplicate each frame's edge pixels 1px outwards; use with --trim "
+                         "to stop neighbouring frames bleeding in")
+    an.add_argument("--shape-padding", type=int, default=0, help="padding between frames")
+    an.add_argument("--border-padding", type=int, default=0, help="padding at the sheet border")
+    an.add_argument("--inner-padding", type=int, default=0, help="padding inside each frame")
+    an.add_argument("--power-of-two", action="store_true",
+                    help="round the sheet up to a power of two")
+    an.add_argument("--merge-duplicates", action="store_true",
+                    help="store identical frames once in the sheet")
     an.add_argument("--no-gif", action="store_true")
     an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
 
@@ -412,6 +425,10 @@ def main(argv=None):
             raise SystemExit("animate needs frames: pass PNG paths, --library IDs and/or --steps IDs")
         dump(animation.animate(frames, a.out, tag=a.tag, fps=a.fps, loop=a.loop,
                                sheet_type=a.sheet_type, data_format=a.data_format, game=a.game,
+                               trim=a.trim, extrude=a.extrude,
+                               shape_padding=a.shape_padding, border_padding=a.border_padding,
+                               inner_padding=a.inner_padding, power_of_two=a.power_of_two,
+                               merge_duplicates=a.merge_duplicates,
                                gif_name=None if a.no_gif else "animation.gif",
                                project_name="animation.aseprite" if a.project else None))
     elif a.cmd == "project":

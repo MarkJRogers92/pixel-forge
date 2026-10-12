@@ -268,17 +268,27 @@ def forge_blend(base_png: str, top_png: str, mode: str = "multiply", opacity: fl
     "sets each frame's duration from `fps`, tags the loop (tag name + loop 'forward'/'reverse'/"
     "'pingpong'), and writes into out_dir a sprite-sheet texture + JSON atlas, an animated GIF "
     "for review, and (with save_project) an editable .aseprite. sheet_type: horizontal/vertical/"
-    "packed/rows/columns/grid. game: set to 'phaser' to also write a drop-in geometry/animation "
-    "descriptor (animation.json) matching that engine's loading convention. Returns the written "
-    "paths; the sheet is shown as an image."))
+    "packed/rows/columns. game: set to 'phaser' to also write a drop-in geometry/animation "
+    "descriptor (animation.json) matching that engine's loading convention. Sheet packing: trim "
+    "crops each frame's transparent border (worth ~75% of the sheet area on sprites with a "
+    "margin) and the descriptor then records each frame's source offset; extrude duplicates edge "
+    "pixels (use it with trim, or frames bleed); shape_padding/border_padding/inner_padding add "
+    "spacing; power_of_two rounds the sheet up; merge_duplicates stores identical frames once. "
+    "Returns the written paths; the sheet is shown as an image."))
 def forge_animate(frames: list[str], out_dir: str, tag: str = "animation", fps: float = 10.0,
                   loop: str = "forward", sheet_type: str = "horizontal",
                   data_format: str = "json-hash", make_gif: bool = True,
-                  save_project: bool = False, game: str | None = None) -> list:
+                  save_project: bool = False, game: str | None = None,
+                  trim: bool = False, extrude: bool = False, shape_padding: int = 0,
+                  border_padding: int = 0, inner_padding: int = 0,
+                  power_of_two: bool = False, merge_duplicates: bool = False) -> list:
     from . import animation
     sprites = [Sprite.from_image(load_image(Path(p).expanduser().read_bytes())) for p in frames]
     res = animation.animate(sprites, out_dir, tag=tag, fps=fps, loop=loop, sheet_type=sheet_type,
                             data_format=data_format, game=game,
+                            trim=trim, extrude=extrude, shape_padding=shape_padding,
+                            border_padding=border_padding, inner_padding=inner_padding,
+                            power_of_two=power_of_two, merge_duplicates=merge_duplicates,
                             gif_name="animation.gif" if make_gif else None,
                             project_name="animation.aseprite" if save_project else None)
     return [json.dumps(res, default=str),

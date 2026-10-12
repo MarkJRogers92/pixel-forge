@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from forge import animation, aseprite_ops
 from forge.sprite import Sprite
@@ -81,3 +82,86 @@ def test_animate_writes_a_phaser_descriptor(tmp_path):
 def test_animate_rejects_an_unknown_game(tmp_path):
     with pytest.raises(ValueError):
         animation.animate([block("#000000")], tmp_path, game="unity")
+
+
+def test_animate_is_unchanged_when_no_sheet_options_are_given(tmp_path):
+    res = animation.animate([block("#c03040"), block("#30a040")], tmp_path)
+    assert res["sheet_options"] == {}
+
+
+def test_animate_rejects_the_broken_grid_sheet_type(tmp_path):
+    # Aseprite's "grid" layout reads the sprite's grid, which this flow never
+    # creates: every frame lands at (0,0) and the atlas is unusable.
+    with pytest.raises(ValueError, match="grid"):
+        animation.animate([block("#000000"), block("#ffffff")], tmp_path, sheet_type="grid")
+
+
+def test_animate_rejects_bad_padding(tmp_path):
+    for kwargs in ({"shape_padding": -1}, {"border_padding": True}, {"inner_padding": "2"}):
+        with pytest.raises(ValueError):
+            animation.animate([block("#000000")], tmp_path, **kwargs)
+
+
+def test_trim_shrinks_the_sheet_and_records_the_offset(tmp_path):
+    frames = [block("#c03040"), block("#30a040"), block("#3040c0")]
+    plain = animation.animate(frames, tmp_path / "plain", sheet_type="packed")
+    trimmed = animation.animate(frames, tmp_path / "trim", sheet_type="packed", trim=True)
+
+    with Image.open(plain["sheet"]) as im:
+        plain_area = im.width * im.height
+    with Image.open(trimmed["sheet"]) as im:
+        trim_area = im.width * im.height
+    # block() draws 4x4 of content inside an 8x8 frame
+    assert trim_area < plain_area
+
+    data = json.loads(Path(trimmed["data"]).read_text())
+    entry = next(iter(data["frames"].values()))
+    assert entry["trimmed"] is True
+    assert entry["spriteSourceSize"] == {"x": 2, "y": 2, "w": 4, "h": 4}
+    assert entry["sourceSize"] == {"w": 8, "h": 8}
+
+
+def test_trim_plus_extrude_costs_area_but_stays_smaller(tmp_path):
+    frames = [block("#c03040"), block("#30a040"), block("#3040c0")]
+    trimmed = animation.animate(frames, tmp_path / "t", sheet_type="packed", trim=True)
+    padded = animation.animate(frames, tmp_path / "p", sheet_type="packed", trim=True,
+                               extrude=True, shape_padding=2, border_padding=2)
+    with Image.open(trimmed["sheet"]) as im:
+        trim_area = im.width * im.height
+    with Image.open(padded["sheet"]) as im:
+        pad_area = im.width * im.height
+    assert trim_area < pad_area
+    assert padded["sheet_options"] == {"trim": True, "extrude": True,
+                                       "shapePadding": 2, "borderPadding": 2}
+
+
+def test_power_of_two_uses_the_real_field_name(tmp_path):
+    # "powerOfTwo" is silently ignored by Aseprite; "powerOfTwoSize" is the key.
+    res = animation.animate([block("#c03040"), block("#30a040"), block("#3040c0")],
+                            tmp_path, sheet_type="packed", power_of_two=True)
+    assert res["sheet_options"] == {"powerOfTwoSize": True}
+    with Image.open(res["sheet"]) as im:
+        for size in (im.width, im.height):
+            assert size & (size - 1) == 0, f"{size} is not a power of two"
+
+
+def test_trimmed_phaser_descriptor_keeps_the_per_frame_rects(tmp_path):
+    res = animation.animate([block("#c03040"), block("#30a040"), block("#3040c0")],
+                            tmp_path, sheet_type="packed", trim=True, game="phaser")
+    desc = json.loads(Path(res["descriptor"]).read_text())
+    assert desc["atlasTrimmed"] is True
+    assert (desc["frameWidth"], desc["frameHeight"]) == (8, 8)  # untrimmed canvas
+    assert all(f["trimmed"] for f in desc["frames"])
+    assert desc["frames"][0]["spriteSourceSize"]["w"] == 4
+    # the uniform-strip snippet would load the wrong pixels once frames differ
+    assert "f.x, f.y, f.w, f.h" in desc["phaser"]["addFrames"]
+    assert "trimmedNote" in desc["phaser"]
+    assert desc["phaser"]["createAnim"].endswith("yoyo: false })")
+
+
+def test_untrimmed_phaser_descriptor_keeps_the_uniform_snippet(tmp_path):
+    res = animation.animate([block("#c03040"), block("#30a040")], tmp_path, game="phaser")
+    desc = json.loads(Path(res["descriptor"]).read_text())
+    assert desc["atlasTrimmed"] is False
+    assert "i * frameWidth, 0, frameWidth, frameHeight" in desc["phaser"]["addFrames"]
+    assert "trimmedNote" not in desc["phaser"]

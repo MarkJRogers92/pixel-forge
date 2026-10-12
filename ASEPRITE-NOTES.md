@@ -85,6 +85,24 @@ ADDITION=29, SUBTRACT=30, DIVIDE=31`.
   textureFilename=<png>, dataFilename=<json>, dataFormat=<json-hash|json-array> }`.
   `type` accepts `horizontal`, `vertical`, `packed`, `rows`, `columns`, `grid`
   (all verified). `json-hash` writes per-frame rects plus `duration`.
+  **`type="grid"` is a trap**: it reads the sprite's grid, and without one every
+  frame lands at (0,0) — a 3-frame "sheet" came out one frame big with all 3
+  rects overlapping (measured). This flow never creates a grid, so Forge does
+  not offer it.
+- **Sheet packing options** (all measured, on 3 frames with a 4x4 body inside an
+  8x8 frame): `trim` cuts each frame's transparent border and adds `trimmed`,
+  `spriteSourceSize` and `sourceSize` to the atlas — on a 16-sprite corpus with
+  transparent margins that made the sheet **75% smaller** (256x288 → 167x109).
+  `extrude` duplicates each edge pixel 1px outwards; **use it with `trim`**, or
+  the neighbouring frame bleeds in at the border. `shapePadding` /
+  `borderPadding` / `innerPadding` add spacing, `mergeDuplicates` stores equal
+  frames once.
+- **`ExportSpriteSheet` ignores unknown option keys silently.** A deliberately
+  bogus key exports with exit 0 and no warning, so a misspelled option looks
+  like it worked. Verify an option by its measured effect on the output sheet.
+  Concretely: the power-of-two field is **`powerOfTwoSize`**; `powerOfTwo` is
+  accepted-and-ignored (verified both ways on the same corpus: 167x109 unchanged
+  vs 256x128).
 - **Animated GIF** — `sprite:saveAs("<path>.gif")` writes a GIF89a covering the
   frames with their durations.
 - **Slices / groups** — `sprite:newSlice()` with `slice.bounds = Rectangle(x,y,w,h)`

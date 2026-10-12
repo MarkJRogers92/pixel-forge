@@ -63,3 +63,21 @@ def test_single_frame_animation(tmp_path):
     assert res["frames"] == 1
     assert "gif" not in res
     assert Path(res["sheet"]).exists()
+
+
+def test_animate_writes_a_phaser_descriptor(tmp_path):
+    res = animation.animate([block("#c03040"), block("#30a040"), block("#3040c0")],
+                            tmp_path, tag="flicker", fps=12, loop="pingpong", game="phaser")
+    desc = json.loads(Path(res["descriptor"]).read_text())
+    assert desc["engine"] == "phaser"
+    assert desc["sheetType"] == "horizontal"
+    assert (desc["frameWidth"], desc["frameHeight"], desc["frameCount"]) == (8, 8, 3)
+    assert desc["loop"] == "pingpong"
+    assert [f["x"] for f in desc["frames"]] == [0, 8, 16]
+    assert desc["frames"][0]["durationMs"] == 83
+    assert desc["phaser"]["createAnim"].endswith("yoyo: true })")
+
+
+def test_animate_rejects_an_unknown_game(tmp_path):
+    with pytest.raises(ValueError):
+        animation.animate([block("#000000")], tmp_path, game="unity")

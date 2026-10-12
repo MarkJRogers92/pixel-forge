@@ -139,13 +139,25 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   ./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png
   ./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png
   ```
+
+  A pass can also finish a generated sprite automatically: add
+  `--aseprite-pass quantize|dither` to `forge make`/`forge prepare` (with `--pass-colors`,
+  `--pass-algo`, `--pass-palette`; the palette defaults to the profile's, so a DEAD MALL run
+  can snap straight onto the game palette). The MCP `forge_make`/`forge_prepare` take an
+  `aseprite_pass` object, e.g. `{"op": "quantize", "colors": 16}`.
 - **Animation** (`forge animate`, `forge_animate`): build a real Aseprite animation from
-  ordered frame PNGs — per-frame durations from `--fps`, a tag with a loop direction
+  ordered frames — per-frame durations from `--fps`, a tag with a loop direction
   (`forward`/`reverse`/`pingpong`) — and export a **game-ready sprite sheet** (PNG + JSON
-  atlas), an animated **GIF for review**, and an editable `.aseprite`.
+  atlas), an animated **GIF for review**, and an editable `.aseprite`. Frames can be PNG
+  paths, `--library` item ids (e.g. the sprites of 2–3 generation runs), or `--steps` of a
+  run. `--game phaser` also writes a drop-in descriptor (`animation.json`) matching the
+  game's convention: a **horizontal strip** whose frames the code numbers `'0'..'n-1'`
+  (`ensureFrames(key, frameWidth, frameHeight, count)`), plus the exact load/add/animate
+  snippets.
 
   ```bash
   ./forge.sh animate frame0.png frame1.png frame2.png -o out/clip --tag flicker --fps 12 --loop pingpong
+  ./forge.sh animate --library 20261012-sign-off --library 20261012-sign-on -o out/sign --game phaser
   ```
 
 ### Automatic cleanup (every result)

@@ -191,3 +191,24 @@ def blend(base: Sprite, top: Sprite, mode: str = "normal", opacity: float = 1.0,
         run_batch(_BLEND_LUA, {"input": str(src), "top": str(tp), "output": str(out),
                           "mode": BLEND_MODES[mode], "opacity": str(level), "name": mode}, timeout)
         return _load_result(out)
+
+
+PASS_OPS = ("quantize", "dither")
+
+
+def run_pass(sprite: Sprite, spec: dict | None) -> Sprite:
+    """Run one named Aseprite pass described by `spec`; a falsy spec is a no-op.
+
+    ``spec = {"op": "quantize", "colors": 16, "dither": None}``
+    ``spec = {"op": "dither", "algorithm": "ordered", "palette": ["#rrggbb", ...],
+              "matrix": None}``
+    """
+    if not spec:
+        return sprite
+    op = str(spec.get("op", "")).lower()
+    if op == "quantize":
+        return quantize(sprite, colors=int(spec.get("colors", 16)), dither=spec.get("dither"))
+    if op == "dither":
+        return dither(sprite, algorithm=spec.get("algorithm", "ordered"),
+                      palette=spec.get("palette"), matrix=spec.get("matrix"))
+    raise ValueError(f"unknown aseprite pass {op!r}; choose {PASS_OPS}")

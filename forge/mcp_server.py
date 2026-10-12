@@ -83,18 +83,21 @@ def forge_render(program: dict, base_png: str | None = None, save: bool = True,
     "open_in: 'aseprite' (layered document: final on top, every other version as hidden "
     "layers), 'piskel' or 'both'. combine (default true): after judging, the artist brings the "
     "best feature of each other draft into the winner; the combination still has to win the "
-    "final judging. Takes 2-6 minutes."))
+    "final judging. Takes 2-6 minutes. aseprite_pass (optional) finishes the result with an "
+    "Aseprite engine pass, e.g. {'op':'quantize','colors':16} or "
+    "{'op':'dither','algorithm':'ordered'} (palette defaults to the profile's)."))
 def forge_make(prompt: str, width: int | None = None, height: int | None = None,
                profile: str | None = None, project: str | None = None, rounds: int = 2,
                artist_name: str | None = None, model: str | None = None,
                start_png: str | None = None, out: str | None = None, candidates: int = 3,
                checks: list[str] | None = None, routes: list[str] | None = None,
-               open_in: str | None = None, combine: bool = True) -> list:
+               open_in: str | None = None, combine: bool = True,
+               aseprite_pass: dict | None = None) -> list:
     from .cli import make
     log: list[str] = []
     result = make(prompt, width, height, profile, project, rounds, artist_name, model,
                   start_png, out, log=log.append, candidates=candidates, checks=checks,
-                  routes=routes, open_in=open_in, combine=combine)
+                  routes=routes, open_in=open_in, combine=combine, aseprite_pass=aseprite_pass)
     result["log"] = log
     return [json.dumps(result, default=str),
             _preview(Sprite.from_image(load_image(Path(result["png"]).read_bytes())))]
@@ -116,15 +119,19 @@ def _workflow_response(result: dict, log: list[str]) -> list:
     "No Claude, judging, paid RD generation or automatic retries. Returns awaiting_visual_review: "
     "the calling agent must visually review requirements, then optionally forge_repair and "
     "review again, then forge_open in Aseprite. out copies a candidate without overwriting; "
-    "open_in opens it for inspection, without marking it approved."), annotations=WORKFLOW_WRITE)
+    "open_in opens it for inspection, without marking it approved. aseprite_pass (optional) "
+    "finishes it with an Aseprite engine pass, e.g. {'op':'dither','algorithm':'ordered'}."),
+    annotations=WORKFLOW_WRITE)
 def forge_prepare(prompt: str, width: int | None = None, height: int | None = None,
                   profile: str | None = None, project: str | None = None,
                   input_png: str | None = None, checks: list[str] | None = None,
-                  out: str | None = None, open_in: str | None = None) -> list:
+                  out: str | None = None, open_in: str | None = None,
+                  aseprite_pass: dict | None = None) -> list:
     from .fixer_workflow import prepare
     log = []
     return _workflow_response(prepare(prompt, width, height, profile, project, input_png,
-                                      checks, out, open_in, log.append), log)
+                                      checks, out, open_in, log.append,
+                                      aseprite_pass=aseprite_pass), log)
 
 
 @server.tool(description=(
@@ -261,15 +268,17 @@ def forge_blend(base_png: str, top_png: str, mode: str = "multiply", opacity: fl
     "sets each frame's duration from `fps`, tags the loop (tag name + loop 'forward'/'reverse'/"
     "'pingpong'), and writes into out_dir a sprite-sheet texture + JSON atlas, an animated GIF "
     "for review, and (with save_project) an editable .aseprite. sheet_type: horizontal/vertical/"
-    "packed/rows/columns/grid. Returns the written paths; the sheet is shown as an image."))
+    "packed/rows/columns/grid. game: set to 'phaser' to also write a drop-in geometry/animation "
+    "descriptor (animation.json) matching that engine's loading convention. Returns the written "
+    "paths; the sheet is shown as an image."))
 def forge_animate(frames: list[str], out_dir: str, tag: str = "animation", fps: float = 10.0,
                   loop: str = "forward", sheet_type: str = "horizontal",
                   data_format: str = "json-hash", make_gif: bool = True,
-                  save_project: bool = False) -> list:
+                  save_project: bool = False, game: str | None = None) -> list:
     from . import animation
     sprites = [Sprite.from_image(load_image(Path(p).expanduser().read_bytes())) for p in frames]
     res = animation.animate(sprites, out_dir, tag=tag, fps=fps, loop=loop, sheet_type=sheet_type,
-                            data_format=data_format,
+                            data_format=data_format, game=game,
                             gif_name="animation.gif" if make_gif else None,
                             project_name="animation.aseprite" if save_project else None)
     return [json.dumps(res, default=str),

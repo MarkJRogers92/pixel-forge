@@ -54,6 +54,8 @@ Other commands:
 ./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png   # Aseprite dithering
 ./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png                 # Aseprite blend
 ./forge.sh animate f0.png f1.png f2.png -o out/clip --tag flicker --fps 12 --loop pingpong # sheet + GIF
+./forge.sh animate --library <id> --library <id> -o out/clip --game phaser                # frames from the library, drop-in Phaser sheet
+./forge.sh make "<brief>" --project dead-mall -W 32 -H 48 --aseprite-pass quantize        # finish the sprite on the game palette
 ./forge.sh project list | project learn dead-mall  # registered games / refresh a style profile
 ./forge.sh serve                                   # browser editor (Piskel + AI panel) on :9002
 ```

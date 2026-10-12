@@ -106,6 +106,19 @@ binary, and an `outline_matrix` preference string is present). So the passes
 module does not expose an Aseprite outline; Forge's own `outline` DSL op covers
 that.
 
+## Target-game convention (DEAD MALL, `~/code/90s`)
+
+For the drop-in descriptor (`forge animate --game phaser`): the game is **Phaser 4.2**
+(Vite/TypeScript), *not* Godot. It does not use JSON atlases — it loads **one PNG per
+texture** (`this.load.image(key, url)`, `src/game/scenes/MvpRunScene.ts`) and treats a
+sheet as a **horizontal strip** whose frames it numbers `'0'..'n-1'` at
+`x = i * frameWidth` (`MallRoomView.ensureFrames`), with `frameWidth`/`frameHeight`
+declared in `src/game/presentation/assets.ts`. `public/assets/neon/manifest.json` is a
+provenance index (path/source/generator/size/sha256), not an atlas. The descriptor
+therefore records `sheetType: "horizontal"`, `frameWidth/Height`, `frameCount`,
+per-frame rects, `fps`/`loop`, the sheet SHA-256, and ready-to-paste `loadImage`/
+`addFrames`/`createAnim` snippets for that convention.
+
 ## How the passes call Aseprite
 
 `forge/aseprite_ops.py` writes the input sprite(s) to temporary PNGs, runs a Lua

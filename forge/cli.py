@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
+from . import animation, aseprite_ops
 from . import routes as route_mod
 from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -42,6 +43,46 @@ from .fixer_workflow import prepare, repair
 ARTISTS = sorted(artist.BACKENDS) + ["gpt-image"]
 
 
+def _add_pass_args(parser) -> None:
+    """Optional finishing pass on the produced sprite (needs Aseprite)."""
+    parser.add_argument("--aseprite-pass", choices=list(aseprite_ops.PASS_OPS),
+                        help="finish the sprite with an Aseprite pass: quantize or dither")
+    parser.add_argument("--pass-colors", type=int, default=16, help="quantize target colour count")
+    parser.add_argument("--pass-algo", default="ordered", choices=list(aseprite_ops.ALGORITHMS),
+                        help="dither algorithm for --aseprite-pass dither")
+    parser.add_argument("--pass-palette", help="comma-separated hex colours (default: the profile palette)")
+
+
+def _pass_spec(args) -> dict | None:
+    """Build an Aseprite-pass spec from CLI args; palette is filled from the profile later."""
+    op = getattr(args, "aseprite_pass", None)
+    if not op:
+        return None
+    palette = [c.strip() for c in args.pass_palette.split(",") if c.strip()] if args.pass_palette else None
+    spec = {"op": op, "palette": palette}
+    if op == "quantize":
+        spec["colors"] = args.pass_colors
+    else:
+        spec["algorithm"] = args.pass_algo
+    return spec
+
+
+def _finish_pass(sprite: Sprite, spec: dict | None, profile: dict | None, log) -> Sprite:
+    """Apply the optional finishing pass; never fatal (Aseprite may be absent)."""
+    if not spec:
+        return sprite
+    spec = dict(spec)
+    if spec.get("palette") is None and profile:
+        spec["palette"] = list((profile.get("palette") or {}).values()) or None
+    try:
+        out = aseprite_ops.run_pass(sprite, spec)
+    except (aseprite_ops.AsepriteError, ValueError) as e:
+        log(f"aseprite pass {spec.get('op')} skipped: {e}")
+        return sprite
+    log(f"aseprite pass {spec.get('op')} applied")
+    return out
+
+
 def make(prompt: str, width: int | None = None, height: int | None = None, profile: str | None = None,
          project: str | None = None, rounds: int = 2, artist_name: str | None = None,
          model: str | None = None, start: str | None = None, out: str | None = None,
@@ -49,7 +90,8 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
          polish: bool = True, use_references: bool = True, keep_steps: bool = False,
          retouch_only: bool = False, candidates: int = 1, checks: list[str] | None = None,
          refs: list[str] | None = None, routes: list[str] | None = None,
-         open_in: str | None = None, combine: bool = True) -> dict:
+         open_in: str | None = None, combine: bool = True,
+         aseprite_pass: dict | None = None) -> dict:
     """The automatic pipeline shared by the CLI and the MCP server."""
     if project and not profile:
         profile = projects.get(project)["id"]
@@ -100,13 +142,20 @@ def make(prompt: str, width: int | None = None, height: int | None = None, profi
     log(f"artist: {backend.name}; saving to library/{item_id}")
     steps = artist.generate(req, backend, d / "work", log)
     final = steps[-1]
-    library.save_result(d, final.sprite, {
+    saved_sprite, saved_qa = final.sprite, final.qa
+    if aseprite_pass:
+        final.sprite.save(d / "work" / "pre_pass.png")
+        saved_sprite = _finish_pass(final.sprite, aseprite_pass, prof, log)
+        if saved_sprite is not final.sprite:
+            saved_qa = qa.check(saved_sprite)
+    library.save_result(d, saved_sprite, {
         "kind": "refine" if base else "generate", "prompt": prompt, "size": [req.width, req.height],
         "profile": profile, "backend": backend.name, "model": getattr(backend, "model", None),
+        "aseprite_pass": aseprite_pass or None,
         "steps": [{"kind": s.kind, "program": s.program, "errors": s.errors, "qa": s.qa, "notes": s.notes}
                   for s in steps]})
     result = {"library_id": item_id, "png": str(d / "sprite.png"), "preview": str(d / "sprite@8x.png"),
-              "size": [final.sprite.width, final.sprite.height], "qa": final.qa,
+              "size": [saved_sprite.width, saved_sprite.height], "qa": saved_qa,
               "review_notes": [s.notes for s in steps if s.notes]}
     if keep_steps:
         result["_steps"] = steps
@@ -168,6 +217,7 @@ def main(argv=None):
                        help="skip the combine step (bringing the best feature of each other draft into the winner)")
         g.add_argument("--open", dest="open_in", choices=editors.EDITORS,
                        help="open the result: aseprite (layered document), piskel, or both")
+        _add_pass_args(g)
 
     prep = sub.add_parser("prepare", help="GPT image -> free RD neural fixer -> QA; pauses for Dot review")
     prep.add_argument("prompt")
@@ -178,6 +228,7 @@ def main(argv=None):
     prep.add_argument("-o", "--out", help="copy the review candidate; never overwrites")
     prep.add_argument("--open", dest="open_in", choices=editors.EDITORS,
                       help="open the candidate for inspection; visual approval remains pending")
+    _add_pass_args(prep)
 
     style_test = sub.add_parser("pixellab-style-test", help="dry-run or run a two-image PixelLab style comparison")
     style_test.add_argument("prompt")
@@ -216,32 +267,36 @@ def main(argv=None):
     fa = sub.add_parser("from-aseprite"); fa.add_argument("document")
     fa.add_argument("-o", "--out"); fa.add_argument("--polish", action="store_true"); fa.add_argument("--name")
 
-    from .aseprite_ops import ALGORITHMS as _ALGOS, BLEND_MODES as _MODES
     di = sub.add_parser("dither", help="dither an image onto a palette with Aseprite's engine")
     di.add_argument("image"); di.add_argument("-o", "--out")
-    di.add_argument("--algo", default="ordered", choices=list(_ALGOS))
+    di.add_argument("--algo", default="ordered", choices=list(aseprite_ops.ALGORITHMS))
     di.add_argument("--palette", help="comma-separated hex colours (#rrggbb)")
     di.add_argument("--profile", help="use a style profile's palette instead")
     di.add_argument("--matrix", help="Aseprite dithering-matrix file (ordered algorithm only)")
     qz = sub.add_parser("quantize", help="reduce colours with Aseprite's quantizer")
     qz.add_argument("image"); qz.add_argument("-o", "--out")
     qz.add_argument("--colors", type=int, default=16)
-    qz.add_argument("--dither", choices=list(_ALGOS), default=None,
+    qz.add_argument("--dither", choices=list(aseprite_ops.ALGORITHMS), default=None,
                     help="dither while quantizing (default: flat nearest-colour mapping)")
     bl = sub.add_parser("blend", help="composite two images with an Aseprite blend mode")
     bl.add_argument("base"); bl.add_argument("top"); bl.add_argument("-o", "--out")
-    bl.add_argument("--mode", default="multiply", choices=sorted(_MODES))
+    bl.add_argument("--mode", default="multiply", choices=sorted(aseprite_ops.BLEND_MODES))
     bl.add_argument("--opacity", type=float, default=1.0)
 
-    from . import animation as _anim
     an = sub.add_parser("animate", help="build an animation and export a sprite sheet + GIF")
-    an.add_argument("frames", nargs="+", help="frame PNGs, in playback order")
+    an.add_argument("frames", nargs="*", help="frame PNGs, in playback order")
     an.add_argument("-o", "--out", required=True, help="output directory")
+    an.add_argument("--library", action="append", default=[],
+                    help="use a library item's sprite.png as a frame (repeatable, in order)")
+    an.add_argument("--steps", action="append", default=[],
+                    help="use a library item's work/step_*.png review steps as frames (repeatable)")
     an.add_argument("--tag", default="animation")
     an.add_argument("--fps", type=float, default=10.0)
-    an.add_argument("--loop", default="forward", choices=sorted(_anim.LOOP_DIRS))
-    an.add_argument("--type", dest="sheet_type", default="horizontal", choices=list(_anim.SHEET_TYPES))
-    an.add_argument("--data-format", default="json-hash", choices=list(_anim.DATA_FORMATS))
+    an.add_argument("--loop", default="forward", choices=sorted(animation.LOOP_DIRS))
+    an.add_argument("--type", dest="sheet_type", default="horizontal", choices=list(animation.SHEET_TYPES))
+    an.add_argument("--data-format", default="json-hash", choices=list(animation.DATA_FORMATS))
+    an.add_argument("--game", choices=list(animation.GAMES),
+                    help="also write a drop-in descriptor (e.g. 'phaser') for that engine")
     an.add_argument("--no-gif", action="store_true")
     an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
 
@@ -280,10 +335,12 @@ def main(argv=None):
         dump(make(a.prompt, a.width, a.height, a.profile, a.project, a.rounds, a.artist, a.model,
                   a.start, a.out, log=lambda m: print(m, file=sys.stderr), refiner=a.refiner,
                   polish=not a.no_polish, candidates=a.candidates, checks=a.check, refs=a.ref,
-                  routes=a.route, open_in=a.open_in, combine=not a.no_combine))
+                  routes=a.route, open_in=a.open_in, combine=not a.no_combine,
+                  aseprite_pass=_pass_spec(a)))
     elif a.cmd == "prepare":
         dump(prepare(a.prompt, a.width, a.height, a.profile, a.project, a.input_png,
-                     a.check, a.out, a.open_in, log=lambda m: print(m, file=sys.stderr)))
+                     a.check, a.out, a.open_in, log=lambda m: print(m, file=sys.stderr),
+                     aseprite_pass=_pass_spec(a)))
     elif a.cmd == "pixellab-style-test":
         profile_id = a.profile
         if a.project:
@@ -329,7 +386,6 @@ def main(argv=None):
     elif a.cmd == "from-aseprite":
         dump(editors.import_from_aseprite(Path(a.document), a.out, polish=a.polish, name=a.name))
     elif a.cmd in ("dither", "quantize", "blend"):
-        from . import aseprite_ops
         load = lambda p: Sprite.from_image(load_image(Path(p).read_bytes()))
         if a.cmd == "dither":
             palette = [c.strip() for c in a.palette.split(",") if c.strip()] if a.palette else None
@@ -344,10 +400,18 @@ def main(argv=None):
         sprite.save(out)
         dump({"png": str(out), "size": [sprite.width, sprite.height], "qa": qa.check(sprite)})
     elif a.cmd == "animate":
-        from . import animation
         frames = [Sprite.from_image(load_image(Path(p).read_bytes())) for p in a.frames]
+        for item in a.library:
+            frames.append(Sprite.from_image(load_image(library.item_path(item).read_bytes())))
+        for item in a.steps:
+            work = library.item_path(item).parent / "work"
+            steps = sorted(work.glob("step_*.png"),
+                           key=lambda p: int("".join(ch for ch in p.stem if ch.isdigit()) or 0))
+            frames += [Sprite.from_image(load_image(p.read_bytes())) for p in steps]
+        if not frames:
+            raise SystemExit("animate needs frames: pass PNG paths, --library IDs and/or --steps IDs")
         dump(animation.animate(frames, a.out, tag=a.tag, fps=a.fps, loop=a.loop,
-                               sheet_type=a.sheet_type, data_format=a.data_format,
+                               sheet_type=a.sheet_type, data_format=a.data_format, game=a.game,
                                gif_name=None if a.no_gif else "animation.gif",
                                project_name="animation.aseprite" if a.project else None))
     elif a.cmd == "project":

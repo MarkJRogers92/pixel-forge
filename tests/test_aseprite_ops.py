@@ -81,3 +81,18 @@ def test_missing_aseprite_becomes_an_op_error(monkeypatch):
                       "ops": [{"op": "rect", "x": 0, "y": 0, "w": 4, "h": 4, "c": "a"},
                               {"op": "aseprite_quantize", "colors": 4}]})
     assert len(res.errors) == 1 and "Aseprite" in res.errors[0]
+
+
+def test_run_pass_dispatches_and_validates():
+    src = gradient()
+    assert aseprite_ops.run_pass(src, None) is src  # no spec -> unchanged
+
+    q = aseprite_ops.run_pass(src, {"op": "quantize", "colors": 4})
+    assert len(q.used_keys()) <= 4
+
+    target = ["#101018", "#c03040", "#f0e8c0"]
+    d = aseprite_ops.run_pass(src, {"op": "dither", "algorithm": "ordered", "palette": target})
+    assert set(d.palette.values()) <= set(target)
+
+    with pytest.raises(ValueError):
+        aseprite_ops.run_pass(src, {"op": "wobble"})

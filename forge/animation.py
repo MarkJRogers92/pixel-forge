@@ -20,6 +20,9 @@ from .aseprite_ops import AsepriteError
 LOOP_DIRS = {"forward": "FORWARD", "reverse": "REVERSE", "pingpong": "PING_PONG"}
 SHEET_TYPES = ("horizontal", "vertical", "packed", "rows", "columns", "grid")
 DATA_FORMATS = ("json-hash", "json-array")
+# Games/engines we emit a drop-in descriptor for. DEAD MALL (~/code/90s) is Phaser 4:
+# it loads one PNG per texture and numbers a horizontal strip's frames '0'..'n-1'.
+GAMES = ("phaser",)
 
 _ANIM_LUA = r"""
 local frames = json.decode(io.open(app.params.frames):read("a"))
@@ -48,10 +51,59 @@ if app.params.project ~= "" then spr:saveAs(app.params.project) end
 """
 
 
+def _atlas_frames(data_path):
+    """Frame rects in playback order, read from the Aseprite JSON atlas we wrote."""
+    data = json.loads(Path(data_path).read_text())
+    entries = data.get("frames", {})
+    entries = entries.values() if isinstance(entries, dict) else entries
+    rects = []
+    for i, entry in enumerate(entries):
+        r = entry["frame"]
+        rects.append({"index": i, "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
+                      "durationMs": entry.get("duration")})
+    return rects
+
+
+def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, duration):
+    """A drop-in geometry descriptor for a game engine (see GAMES)."""
+    import hashlib
+    w, h = size
+    rects = (_atlas_frames(data) if data and Path(data).exists()
+             else [{"index": i, "x": i * w, "y": 0, "w": w, "h": h,
+                    "durationMs": round(duration * 1000)} for i in range(count)])
+    descriptor = {
+        "engine": game,
+        "texture": Path(sheet).name,
+        "sheetType": sheet_type,
+        "frameWidth": w,
+        "frameHeight": h,
+        "frameCount": len(rects),
+        "fps": fps,
+        "durationMs": round(duration * 1000),
+        "loop": loop,
+        "tag": tag,
+        "frames": rects,
+        "sha256": hashlib.sha256(Path(sheet).read_bytes()).hexdigest(),
+    }
+    if game == "phaser":
+        n = len(rects)
+        yoyo = "true" if loop == "pingpong" else "false"
+        descriptor["phaser"] = {
+            "loadImage": f"this.load.image('<key>', '/assets/<folder>/{Path(sheet).name}')",
+            "addFrames": "for (let i = 0; i < count; i++) texture.add(String(i), 0, "
+                         "i * frameWidth, 0, frameWidth, frameHeight)",
+            "createAnim": "this.anims.create({ key: '<animKey>', frames: this.anims."
+                          "generateFrameNumbers('<textureKey>', { start: 0, end: " + str(n - 1)
+                          + " }), frameRate: " + str(fps) + ", repeat: -1, yoyo: " + yoyo + " })",
+        }
+    return descriptor
+
+
 def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: str = "forward",
             sheet_type: str = "horizontal", data_format: str = "json-hash",
             sheet_name: str = "sheet.png", data_name: str | None = "sheet.json",
             gif_name: str | None = "animation.gif", project_name: str | None = None,
+            game: str | None = None, descriptor_name: str = "animation.json",
             timeout: int = 180) -> dict:
     """Build an animation from `frames` (Sprites of equal size) in `out_dir`.
 
@@ -69,6 +121,8 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
         raise ValueError(f"sheet_type must be one of {SHEET_TYPES}")
     if data_format not in DATA_FORMATS:
         raise ValueError(f"data_format must be one of {DATA_FORMATS}")
+    if game is not None and game not in GAMES:
+        raise ValueError(f"game must be one of {GAMES} or None")
     if fps <= 0:
         raise ValueError("fps must be positive")
     sizes = {(f.width, f.height) for f in frames}
@@ -108,4 +162,10 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
     for key, path in (("data", data), ("gif", gif), ("project", project)):
         if path is not None:
             result[key] = str(path)
+    if game:
+        descriptor = _descriptor(game, sheet, data, sheet_type, len(frames),
+                                 (frames[0].width, frames[0].height), fps, tag, loop, duration)
+        descriptor_path = out_dir / descriptor_name
+        descriptor_path.write_text(json.dumps(descriptor, indent=1))
+        result["descriptor"] = str(descriptor_path)
     return result

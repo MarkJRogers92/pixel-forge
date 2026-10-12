@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from . import artist, dsl, editors, library, profiles, projects, qa, rd_fixer
+from . import aseprite_ops
 from .cleanup import CleanupOptions, cleanup, load_image
 from .sprite import Sprite, parse_hex
 
@@ -144,7 +145,7 @@ def _finish(item_id: str, d: Path, sprite: Sprite, meta: dict, destination: Path
 def prepare(prompt: str, width: int | None = None, height: int | None = None,
             profile: str | None = None, project: str | None = None, input_png: str | None = None,
             checks: list[str] | None = None, out: str | None = None, open_in: str | None = None,
-            log=print, progress=None) -> dict:
+            log=print, progress=None, aseprite_pass: dict | None = None) -> dict:
     if not prompt.strip():
         raise ValueError("a sprite brief is required")
     if open_in is not None and open_in not in editors.EDITORS:
@@ -198,6 +199,18 @@ def prepare(prompt: str, width: int | None = None, height: int | None = None,
     sprite, cleanup_report = cleanup(fixed, CleanupOptions(width=w, height=h, max_colors=32,
         palette=strict_palette, remove_background="auto", detect_grid=False, remove_orphans=False))
     sprite.save(work / "cleaned.png")
+    if aseprite_pass:
+        pass_spec = dict(aseprite_pass)
+        if pass_spec.get("palette") is None and prof:
+            pass_spec["palette"] = list((prof.get("palette") or {}).values()) or None
+        try:
+            sprite = aseprite_ops.run_pass(sprite, pass_spec)
+        except (aseprite_ops.AsepriteError, ValueError) as e:
+            log(f"aseprite pass {pass_spec.get('op')} skipped: {e}")
+        else:
+            sprite.save(work / "passed.png")
+            meta["aseprite_pass"] = pass_spec
+            log(f"aseprite pass {pass_spec.get('op')} applied")
     if progress:
         progress("cleanup", item_id)
     meta.update({"fixer": fixer_report, "cleanup": cleanup_report.__dict__})

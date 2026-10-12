@@ -140,6 +140,61 @@ def test_rim_of_a_fully_transparent_sprite_is_empty_not_a_crash():
     assert np.all(out[..., 2] == 255)
 
 
+def _reference_distance(mask):
+    """The obvious per-pixel chamfer loop, kept as the oracle for the fast one."""
+    import numpy as _np
+    d = _np.where(mask, _np.float32(1e6), _np.float32(0.0))
+    h, w = d.shape
+    for y in range(h):
+        for x in range(w):
+            if not mask[y, x]:
+                continue
+            best = d[y, x]
+            if y:
+                best = min(best, d[y - 1, x] + 1.0)
+                if x:
+                    best = min(best, d[y - 1, x - 1] + 1.41421356)
+                if x < w - 1:
+                    best = min(best, d[y - 1, x + 1] + 1.41421356)
+            if x:
+                best = min(best, d[y, x - 1] + 1.0)
+            d[y, x] = best
+    for y in range(h - 1, -1, -1):
+        for x in range(w - 1, -1, -1):
+            if not mask[y, x]:
+                continue
+            best = d[y, x]
+            if y < h - 1:
+                best = min(best, d[y + 1, x] + 1.0)
+                if x < w - 1:
+                    best = min(best, d[y + 1, x + 1] + 1.41421356)
+                if x:
+                    best = min(best, d[y + 1, x - 1] + 1.41421356)
+            if x < w - 1:
+                best = min(best, d[y, x + 1] + 1.0)
+            d[y, x] = best
+    return d
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (1, 9), (9, 1), (16, 16), (33, 21)])
+def test_the_fast_distance_transform_matches_the_plain_loop(shape):
+    rng = np.random.default_rng(7)
+    for _ in range(5):
+        mask = rng.random(shape) > 0.45
+        fast = normalmap.distance_inside(mask)
+        slow = _reference_distance(mask)
+        assert np.allclose(fast, slow, atol=1e-5), f"mismatch for\n{mask}"
+
+
+def test_a_big_sprite_is_not_painfully_slow():
+    """The row-vectorised transform keeps a 512x512 rim off the seconds scale."""
+    import time
+    s = solid(512)
+    t0 = time.perf_counter()
+    normalmap.normal_map(s, rim=0.8, blur=2.0)
+    assert time.perf_counter() - t0 < 2.0
+
+
 # ---- lit preview -----------------------------------------------------------
 
 def lum(img) -> np.ndarray:

@@ -93,38 +93,36 @@ def gaussian_blur(field: np.ndarray, radius: float) -> np.ndarray:
 
 
 def distance_inside(mask: np.ndarray) -> np.ndarray:
-    """Approximate Euclidean distance (chamfer 1/sqrt2) to the nearest False pixel."""
-    inf = F32(1e6)
-    d = np.where(mask, inf, F32(0.0))
-    h, w = d.shape
+    """Approximate Euclidean distance (chamfer 1/sqrt2) to the nearest False pixel.
+
+    Row-vectorised: each pass does one horizontal relaxation via a cumulative
+    minimum, then the vertical/diagonal terms from the row above or below. This is
+    the same chamfer metric the obvious per-pixel loop computes (asserted against
+    that loop in the tests), about two orders of magnitude faster on large sprites.
+    """
+    h, w = mask.shape
+    d = np.where(mask, F32(1e6), F32(0.0))
+    diag = F32(1.41421356)
+    xs = np.arange(w, dtype=F32)
+
+    def relax(row, neighbour):
+        """One row's vertical + diagonal relaxation against `neighbour`."""
+        row = np.minimum(row, neighbour + F32(1.0))
+        row = np.minimum(row, np.concatenate(([F32(1e6)], neighbour[:-1] + diag)))
+        row = np.minimum(row, np.concatenate((neighbour[1:] + diag, [F32(1e6)])))
+        return row
+
     for y in range(h):
-        for x in range(w):
-            if not mask[y, x]:
-                continue
-            best = d[y, x]
-            if y:
-                best = min(best, d[y - 1, x] + 1.0)
-                if x:
-                    best = min(best, d[y - 1, x - 1] + 1.41421356)
-                if x < w - 1:
-                    best = min(best, d[y - 1, x + 1] + 1.41421356)
-            if x:
-                best = min(best, d[y, x - 1] + 1.0)
-            d[y, x] = best
+        if y:
+            d[y] = relax(d[y], d[y - 1])
+        # min over k <= x of d[k] + (x - k), i.e. repeated "left + 1"
+        d[y] = np.where(mask[y], np.minimum.accumulate(d[y] - xs) + xs, F32(0.0))
+
     for y in range(h - 1, -1, -1):
-        for x in range(w - 1, -1, -1):
-            if not mask[y, x]:
-                continue
-            best = d[y, x]
-            if y < h - 1:
-                best = min(best, d[y + 1, x] + 1.0)
-                if x < w - 1:
-                    best = min(best, d[y + 1, x + 1] + 1.41421356)
-                if x:
-                    best = min(best, d[y + 1, x - 1] + 1.41421356)
-            if x < w - 1:
-                best = min(best, d[y, x + 1] + 1.0)
-            d[y, x] = best
+        if y < h - 1:
+            d[y] = relax(d[y], d[y + 1])
+        # min over k >= x of d[k] + (k - x), i.e. repeated "right + 1"
+        d[y] = np.where(mask[y], np.minimum.accumulate((d[y] + xs)[::-1])[::-1] - xs, F32(0.0))
     return d
 
 

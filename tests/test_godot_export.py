@@ -46,8 +46,9 @@ def test_tres_text_has_a_region_per_frame_and_a_margin_when_trimmed(atlas_file, 
     assert text.count('[sub_resource type="AtlasTexture"') == 2
     assert "region = Rect2(0, 0, 8, 8)" in text
     assert "region = Rect2(8, 0, 4, 6)" in text
-    # the trimmed frame carries its offset so Godot draws it in the right place
-    assert "margin = Rect2(-2, -1, 8, 8)" in text
+    # the trimmed frame gets the trimmed-off padding: where the kept content sat
+    # (2, 1) and how much was cut (8-4, 8-6)
+    assert "margin = Rect2(2, 1, 4, 2)" in text
     assert '"name": &"default"' in text and '"speed": 12.0' in text
 
 
@@ -87,6 +88,7 @@ func _initialize() -> void:
 \tfor i in range(res.get_frame_count("default")):
 \t\tvar t: AtlasTexture = res.get_frame_texture("default", i)
 \t\tprint("FRAME ", i, " region=", t.region, " margin=", t.margin)
+\t\tprint("CANVAS ", i, " ", t.get_width(), "x", t.get_height())
 \tquit(0)
 '''
 
@@ -128,4 +130,10 @@ def test_godot_loads_what_we_wrote(atlas_file, tmp_path):
     assert nums[0][0:4] == [0.0, 0.0, 8.0, 8.0]        # untrimmed: full canvas
     assert nums[0][4:8] == [0.0, 0.0, 0.0, 0.0]        # ...and no margin
     assert nums[1][0:4] == [8.0, 0.0, 4.0, 6.0]        # trimmed: the atlas rect
-    assert nums[1][4:8] == [-2.0, -1.0, 8.0, 8.0]      # ...registered to its canvas
+    assert nums[1][4:8] == [2.0, 1.0, 4.0, 2.0]        # ...plus the trimmed-off padding
+    # The claim that actually matters, checked against the engine rather than my
+    # arithmetic: both frames must present the ORIGINAL 8x8 canvas, so a trimmed
+    # animation does not shift or resize. AtlasTexture draws the region at
+    # margin.position inside a canvas of region.size + margin.size.
+    canvases = re.findall(r"CANVAS (\d+) (\d+)x(\d+)", out)
+    assert canvases == [("0", "8", "8"), ("1", "8", "8")], out

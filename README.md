@@ -187,8 +187,16 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
 
   ```bash
   ./forge.sh normalmap <id> --rim 0.85 --blur 1.2 -o out/hero_n.png
+  ./forge.sh normalmap <id> --rim 0.85 --detail 0.45 -o out/hero_n.png   # interior relief too
   ./forge.sh lit <id> -n out/hero_n.png --light 0.3 0.2 --engine godot -o out/hero_lit.png
+  ./forge.sh lit <id> -n out/hero_n.png --gif out/orbit.gif --frames 12 --radius 0.3
   ```
+
+  `--detail` adds that share of the sprite's own luminance on top of the height. Height
+  from alpha is silhouette-only, so a keypad, a handset and a panel all sit on one dome
+  and read flat; `--detail` is what makes interior features tilt. It is ours, not
+  SpriteIlluminator's, off by default, and dark outlines then read as grooves. `--gif`
+  writes a loop of the light orbiting the sprite for review.
 
   `lit` renders one light over the sprite (`--light X Y` normalized, `--brightness 0-100`,
   colour/ambient alpha = intensity) using SpriteIlluminator's own equation — no specular or
@@ -197,6 +205,24 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   unlit flank on a 32×48 prop), 15 is strong (~48%). With `--engine godot` it also writes
   `<name>.light.json` (the uniform values) and `<name>.gdshader`, a canvas-item shader using
   the same uniforms, so a Godot scene can drop the pair straight in.
+
+- **Godot sheets** (`forge godot-frames`, `forge_godot_frames`): turn the JSON atlas
+  `animate` writes into a Godot 4 `SpriteFrames` `.tres`, one `AtlasTexture` per frame.
+  Pass the sheet's path *inside the project* (`--texture res://...`) and write the `.tres`
+  into that project.
+
+  ```bash
+  ./forge.sh animate --library a --library b -o out/clip --type packed --trim --game phaser
+  ./forge.sh godot-frames out/clip/sheet.json --texture res://clip/sheet.png -o out/clip/frames.tres
+  ```
+
+  This is the consumer that makes `--trim` worth using: a trimmed frame gets the
+  trimmed-off padding in its `AtlasTexture.margin` — its position in the original frame,
+  plus what was cut — because Godot draws a frame's `region` at `margin.position` inside a
+  canvas of `region.size + margin.size`. Without it a trimmed sheet shifts *or resizes*
+  every sprite. Verified by loading the generated file in the engine and asserting the drawn
+  canvas size the engine reports, not merely that our numbers round-trip — see the
+  Godot-export tests, which skip without `godot`.
 
 ### Automatic cleanup (every result)
 Removes stray pixels and speckle, fills dents in the outline and draws one consistent dark

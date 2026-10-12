@@ -2,10 +2,17 @@
 
 `animate()` writes a texture plus a JSON atlas. Godot does not read that JSON, so
 this turns it into a `SpriteFrames` `.tres` with one `AtlasTexture` per frame —
-and for a **trimmed** atlas it puts the frame's `spriteSourceSize` into the
-`AtlasTexture.margin`. That is the documented way to keep a trimmed frame
-registered against its original canvas: without it, trimming a sheet silently
-shifts every sprite inside its own rectangle.
+and for a **trimmed** atlas it fills in the frame's `AtlasTexture.margin`. Godot
+draws a frame's `region` at `margin.position` inside a canvas of
+`region.size + margin.size` (`AtlasTexture::draw` / `::get_width` in
+`scene/resources/atlas_texture.cpp`), so the margin is the trimmed-off *padding*:
+its position is where the kept content sat in the original frame, its size is what
+was trimmed away. Get that wrong and a trimmed sheet silently shifts or resizes
+every sprite, which is the whole reason trimming needs a consumer at all.
+
+The margin numbers are the same ones TexturePacker's Godot exporter writes; the
+difference is that this emits a native resource Godot loads directly, where
+TexturePacker needs CodeAndWeb's importer addon.
 
 Written for Godot 4 (`.tres`, format 3) and verified by loading the generated file
 in the engine — see `tests/test_godot_export.py`, which skips without `godot`.
@@ -38,7 +45,6 @@ def sprite_frames_tres(atlas_json, texture_res_path: str, out_tres, *,
     frames = _frames_of(atlas)
     if not frames:
         raise ValueError(f"{atlas_json} has no frames")
-
     out = Path(out_tres)
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = [f'[gd_resource type="SpriteFrames" load_steps={len(frames) + 2} '
@@ -50,13 +56,18 @@ def sprite_frames_tres(atlas_json, texture_res_path: str, out_tres, *,
         lines.append('atlas = ExtResource("1_sheet")')
         lines.append(f"region = Rect2({r['x']}, {r['y']}, {r['w']}, {r['h']})")
         if entry.get("trimmed"):
-            # Godot's convention for a trimmed atlas frame: the margin is the
-            # untrimmed canvas positioned relative to the drawn region.
+            # Godot draws `region` at `margin.position` inside a canvas of
+            # `region.size + margin.size` (AtlasTexture::draw and ::get_width in
+            # scene/resources/atlas_texture.cpp), so the margin is the trimmed-off
+            # *padding*: its position is where the kept content sits in the
+            # original frame, its size is what was trimmed away. These are the same
+            # numbers TexturePacker's Godot exporter writes.
             src = entry.get("spriteSourceSize") or {}
             size = entry.get("sourceSize") or {}
             if src and size:
-                lines.append(f"margin = Rect2({-int(src['x'])}, {-int(src['y'])}, "
-                             f"{int(size['w'])}, {int(size['h'])})")
+                lines.append(f"margin = Rect2({int(src['x'])}, {int(src['y'])}, "
+                             f"{int(size['w']) - int(r['w'])}, "
+                             f"{int(size['h']) - int(r['h'])})")
         lines.append("")
 
     duration = 1.0 / float(fps)

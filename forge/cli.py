@@ -19,6 +19,9 @@
   quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
   blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
   animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
+  manifest IMAGE -o DIR              one explicit asset manifest: reference, canvas/anchor, states,
+                                     animations, outputs, generation; exported and round-trip verified
+  normalmap IMAGE -o DIR             optional tangent-space normal map + lit previews (OpenGL +Y-up)
   project add PATH [--name N]        register an existing art folder (read-only)
   project list | scan ID | learn ID  list / index / build a style profile from it
   profiles                           list style profiles
@@ -33,6 +36,7 @@ import sys
 from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
+from . import manifest, normalmap
 from . import routes as route_mod
 from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -245,6 +249,37 @@ def main(argv=None):
     an.add_argument("--no-gif", action="store_true")
     an.add_argument("--project", action="store_true", help="also save an editable .aseprite")
 
+    mf = sub.add_parser("manifest", help="build one explicit asset manifest, export it, verify the round trip")
+    mf.add_argument("image", help="the canonical state image (PNG)")
+    mf.add_argument("-o", "--out", required=True, help="output folder for the manifest and its outputs")
+    mf.add_argument("--reference", help="reference image the asset came from (default: the image)")
+    mf.add_argument("--direction", default=manifest.DEFAULT_DIRECTION,
+                    help="the canonical view this image is (default: south, PixelLab's seed view)")
+    mf.add_argument("--anchor", default=manifest.DEFAULT_ANCHOR, choices=list(manifest.ANCHOR_PRESETS),
+                    help="attachment point the renderer registers the sprite by")
+    mf.add_argument("--alignment", default="canvas", choices=list(manifest.ALIGNMENTS),
+                    help="canvas = full-canvas export; tight = trimmed + content_bbox recorded")
+    mf.add_argument("--frame", dest="frames", action="append", default=[],
+                    help="extra animation frame PNG (repeatable; frame order is the given order)")
+    mf.add_argument("--fps", type=float, default=10.0)
+    mf.add_argument("--loop", default="forward", choices=list(manifest.LOOPS))
+    mf.add_argument("--columns", type=int, help="sheet columns (default: square-ish grid)")
+    mf.add_argument("--backend", default="pixellab-pixflux", choices=sorted(manifest.BACKENDS))
+    mf.add_argument("--operation", help="the operation that produced it (an unwired one is flagged, not faked)")
+    mf.add_argument("--param", action="append", default=[], metavar="NAME=VALUE",
+                    help="a generation parameter; an unsupported one is flagged (repeatable)")
+    mf.add_argument("--normal-map", action="store_true",
+                    help="also export the optional tangent-space normal-map pass (OpenGL +Y-up)")
+
+    nmap = sub.add_parser("normalmap", help="optional tangent-space normal map + lighting preview")
+    nmap.add_argument("image"); nmap.add_argument("-o", "--out", required=True)
+    nmap.add_argument("--strength", type=float, default=1.0, help="silhouette-inflation strength")
+    nmap.add_argument("--detail-strength", type=float, default=0.5, help="colour-emboss strength")
+    nmap.add_argument("--edge", dest="edge_treatment", default="clamp", choices=list(normalmap.EDGE_TREATMENTS))
+    nmap.add_argument("--convention", default="opengl", choices=list(normalmap.CONVENTIONS))
+    nmap.add_argument("--light", action="append", default=[], choices=sorted(normalmap.LIGHTS),
+                      help="light position for the preview sheet (repeatable)")
+
     p = sub.add_parser("project")
     psub = p.add_subparsers(dest="pcmd", required=True)
     pa = psub.add_parser("add"); pa.add_argument("path"); pa.add_argument("--name"); pa.add_argument("--id")
@@ -350,6 +385,30 @@ def main(argv=None):
                                sheet_type=a.sheet_type, data_format=a.data_format,
                                gif_name=None if a.no_gif else "animation.gif",
                                project_name="animation.aseprite" if a.project else None))
+    elif a.cmd == "manifest":
+        params = {}
+        for item in a.param:
+            name, _, value = item.partition("=")
+            params[name.strip()] = value.strip()
+        dump(manifest.run(a.image, a.out, reference=a.reference, direction=a.direction,
+                          anchor=a.anchor, alignment=a.alignment, frames=a.frames, fps=a.fps,
+                          loop=a.loop, columns=a.columns, backend=a.backend, operation=a.operation,
+                          parameters=params, normal_map=a.normal_map))
+    elif a.cmd == "normalmap":
+        src = load_image(Path(a.image).read_bytes()).convert("RGBA")
+        lights = a.light or ["top-left", "top-right", "left", "right"]
+        out = Path(a.out).expanduser()
+        out.mkdir(parents=True, exist_ok=True)
+        normal = normalmap.normal_map_image(src, strength=a.strength, detail_strength=a.detail_strength,
+                                            edge_treatment=a.edge_treatment, convention=a.convention)
+        normal.save(out / "normal.png")
+        src.save(out / "colour.png")
+        normalmap.review_sheet(src, normal, lights, convention=a.convention).save(out / "review.png")
+        dump({"png": str(out / "normal.png"), "review": str(out / "review.png"),
+              "size": [src.width, src.height], "convention": a.convention,
+              "lights": lights, "parameters": {"strength": a.strength,
+                                               "detail_strength": a.detail_strength,
+                                               "edge_treatment": a.edge_treatment}})
     elif a.cmd == "project":
         if a.pcmd == "add":
             dump(projects.register(a.path, a.name, a.id))

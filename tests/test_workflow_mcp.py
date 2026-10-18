@@ -14,6 +14,7 @@ WORKFLOW_WRITES = {
     "forge_repair": True,
     "forge_open_aseprite": False,
     "forge_import_aseprite": False,
+    "forge_clip": False,
 }
 WORKFLOW_TOOLS = {*WORKFLOW_WRITES, "forge_workflow_status"}
 FORBIDDEN_FIELDS = {
@@ -57,7 +58,7 @@ def test_workflow_tool_set_and_permissions_preserve_existing_authoring(tmp_path)
     async def check():
         tools = {tool.name: tool for tool in await make_server(tmp_path).list_tools()}
         assert set(tools) == EXISTING_TOOLS | WORKFLOW_TOOLS
-        assert len(tools) == 13
+        assert len(tools) == 14
         for name, open_world in WORKFLOW_WRITES.items():
             annotations = tools[name].annotations
             assert annotations.read_only_hint is False

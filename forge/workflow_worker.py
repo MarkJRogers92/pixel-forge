@@ -34,6 +34,23 @@ def validate_work_files(jobs, library_id):
 
 
 def execute(jobs, tool, args):
+    if tool == 'forge_clip':
+        from .clip import import_clip
+        paths = jobs.clip_sources(args)
+        item_id = library.allocate_id(args['tag'])
+        directory = readonly_mcp._safe_path(jobs.store.repo, f'library/{item_id}')
+        report = import_clip(paths, directory, width=args['width'], height=args['height'],
+            fps=args['fps'], loop=args['loop'], tag=args['tag'], palette=args['palette'])
+        meta = readonly_mcp._json_file(directory, 'meta.json')
+        meta.update({'kind': 'clip', 'prompt': args['tag'],
+                     'source_library_ids': args['source_library_ids'], 'status': 'awaiting_visual_review'})
+        write_json(directory / 'meta.json', meta)
+        # Keep local provenance on disk, but return only IDs and relative artifacts.
+        report.pop('folder')
+        report['sources'] = [{key: value for key, value in entry.items() if key != 'path'}
+                             for entry in report['sources']]
+        return {**report, 'library_id': item_id, 'source_library_ids': args['source_library_ids'],
+                'status': 'awaiting_visual_review'}
     if tool == 'forge_prepare':
         source = None
         if args['source_library_id']:

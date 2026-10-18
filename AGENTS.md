@@ -64,6 +64,7 @@ MCP (same abilities as tools): `forge_make` (`routes`, `open_in`, `combine`),
 `forge_open`, `forge_from_aseprite`, `forge_lint`, `forge_render` (+ `forge_guide`
 to draw directly), `forge_pixelize`, `forge_dither` / `forge_quantize` /
 `forge_blend` (Aseprite engine passes), `forge_animate` (frames -> sprite sheet + GIF),
+`forge_clip` (ordered PNGs -> stable shared-transform/palette clip; no Aseprite/provider),
 `forge_status`, `forge_project_assets`.
 
 ## Workflow for a new asset

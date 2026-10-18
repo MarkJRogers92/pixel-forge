@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import artist, dsl, library, profiles, projects, qa
 from . import collision, lighting
@@ -39,7 +41,9 @@ server = MCPServer(
         "forge_dither, forge_quantize and forge_blend run Aseprite's own engine on a PNG "
         "(ordered/error-diffusion dithering onto a palette, colour quantization, and blend-mode "
         "compositing); forge_animate builds a tagged animation from frame PNGs and exports a "
-        "sprite sheet + JSON atlas + GIF. All need Aseprite installed."),
+        "sprite sheet + JSON atlas + GIF. Those operations need Aseprite installed. "
+        "forge_clip imports ordered PNGs with one stable canvas transform and shared palette; "
+        "it needs no Aseprite or provider and returns 1x/2x sheets for visual review."),
 )
 
 
@@ -312,6 +316,28 @@ def forge_animate(frames: list[str], out_dir: str, tag: str = "animation", fps: 
                             project_name="animation.aseprite" if save_project else None)
     return [json.dumps(res, default=str),
             Image(data=Path(res["sheet"]).read_bytes(), format="png")]
+
+
+@server.tool(description=(
+    "Import explicitly ordered equal-canvas PNG frames into a NEW output folder. Keeps order and "
+    "repeats, uses one full-canvas nearest-neighbour transform, and one shared RGBA palette. "
+    "No per-frame fitting, background removal, generation, Aseprite or credits. Optional palette "
+    "or profile maps RGB while preserving alpha; omitted preserves exact RGBA within 62 colours. "
+    "Writes frames, manifest, sheet, and QA report; returns 1x/2x sheets for mandatory visual review. "
+    "FPS and loop describe playback, never reorder exported frames. Existing output is refused."),
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                idempotent_hint=False, open_world_hint=False))
+def forge_clip(frames: list[str], out_dir: str,
+               width: Annotated[int, Field(strict=True)] | None = None,
+               height: Annotated[int, Field(strict=True)] | None = None,
+               fps: Annotated[float, Field(strict=True)] = 10.0, loop: str = 'forward',
+               palette: list[str] | None = None, profile: str | None = None, tag: str = 'clip') -> list:
+    from .clip import import_clip
+    report = import_clip(frames, out_dir, width=width, height=height, fps=fps,
+                         loop=loop, palette=palette, profile=profile, tag=tag)
+    folder = Path(report['folder'])
+    return [json.dumps(report), Image(data=(folder / 'sheet.png').read_bytes(), format='png'),
+            Image(data=(folder / 'sheet@2x.png').read_bytes(), format='png')]
 
 
 @server.tool(description=(

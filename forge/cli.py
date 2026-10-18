@@ -18,6 +18,7 @@
   dither IMAGE                       dither onto a palette with Aseprite's engine (ordered/error-diffusion)
   quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
   blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
+  clip FRAME... -o DIR              stable full-canvas PNG clip import + manifest/QA
   animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
   manifest IMAGE -o DIR              one explicit asset manifest: reference, canvas/anchor, states,
                                      animations, outputs, generation; exported and round-trip verified
@@ -39,7 +40,7 @@ import sys
 from pathlib import Path
 
 from . import artist, dsl, editors, library, lint, profiles, projects, qa
-from . import animation, aseprite_ops, collision, lighting, manifest
+from . import animation, aseprite_ops, clip, collision, lighting, manifest
 from . import routes as route_mod
 from . import pixellab_style
 from .cleanup import CleanupOptions, cleanup, load_image
@@ -300,6 +301,18 @@ def main(argv=None):
     bl.add_argument("--mode", default="multiply", choices=sorted(aseprite_ops.BLEND_MODES))
     bl.add_argument("--opacity", type=float, default=1.0)
 
+    cl = sub.add_parser("clip", help="import ordered PNG frames with one shared canvas transform and palette")
+    cl.add_argument("frames", nargs="+", help="single-frame PNG files in explicit playback order")
+    cl.add_argument("-o", "--out", required=True, help="new output directory (never overwritten)")
+    cl.add_argument("-W", "--width", type=int)
+    cl.add_argument("-H", "--height", type=int)
+    cl.add_argument("--fps", type=float, default=10.0)
+    cl.add_argument("--loop", default="forward", choices=list(manifest.LOOPS))
+    cl.add_argument("--tag", default="clip")
+    cl_palette = cl.add_mutually_exclusive_group()
+    cl_palette.add_argument("--palette", help="shared comma-separated opaque hex colours; preserves source alpha")
+    cl_palette.add_argument("--profile", help="use an existing profile's fixed palette for every frame")
+
     an = sub.add_parser("animate", help="build an animation and export a sprite sheet + GIF")
     an.add_argument("frames", nargs="*", help="frame PNGs, in playback order")
     an.add_argument("-o", "--out", required=True, help="output directory")
@@ -540,6 +553,13 @@ def main(argv=None):
         out = Path(a.out) if a.out else Path(src).with_name(Path(src).stem + f"-{a.cmd}.png")
         sprite.save(out)
         dump({"png": str(out), "size": [sprite.width, sprite.height], "qa": qa.check(sprite)})
+    elif a.cmd == "clip":
+        palette = [c.strip() for c in a.palette.split(",")] if a.palette is not None else None
+        try:
+            dump(clip.import_clip(a.frames, a.out, width=a.width, height=a.height,
+                                  fps=a.fps, loop=a.loop, tag=a.tag, palette=palette, profile=a.profile))
+        except (ValueError, OSError) as exc:
+            raise SystemExit(str(exc)) from exc
     elif a.cmd == "animate":
         frames = [Sprite.from_image(load_image(Path(p).read_bytes())) for p in a.frames]
         for item in a.library:

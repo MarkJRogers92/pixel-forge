@@ -145,6 +145,17 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
   `--pass-algo`, `--pass-palette`; the palette defaults to the profile's, so a DEAD MALL run
   can snap straight onto the game palette). The MCP `forge_make`/`forge_prepare` take an
   `aseprite_pass` object, e.g. `{"op": "quantize", "colors": 16}`.
+- **Stable clip import** (`forge clip`): import explicitly ordered PNG frames with
+  one full-canvas nearest-neighbour transform and one shared exact or fixed
+  palette. Keeps jump/recoil motion, source alpha, duplicates and frame order;
+  exports a verified manifest/sheet and 1x/2x review sheets without Aseprite or a
+  generator. Source hashes, shared transform and diagnostic warnings are saved
+  in `clip-report.json`. See [CLIP-WORKFLOW.md](CLIP-WORKFLOW.md).
+  ```bash
+  ./forge.sh clip stance.png recoil.png recovery.png stance.png -o out/recoil --fps 12
+  ./forge.sh clip f000.png f001.png f002.png -o out/recoil-small -W 64 -H 64 --profile dead-mall
+  ```
+
 - **Animation** (`forge animate`, `forge_animate`): build a real Aseprite animation from
   ordered frames — per-frame durations from `--fps`, a tag with a loop direction
   (`forward`/`reverse`/`pingpong`) — and export a **game-ready sprite sheet** (PNG + JSON

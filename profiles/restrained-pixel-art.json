@@ -1,0 +1,8 @@
+{
+  "name": "Restrained pixel art",
+  "style": "Use a deliberate, recognizable silhouette and give the clearest subject-specific identifying cue from the brief enough space to read at 1x. Build crisp, consistent pixel clusters; use a compact palette and about three shade values per material where appropriate, with coherent lighting that fits each material. Keep texture and tiny accents sparse; omit invented buckles, rivets, strands, microtexture, random gloss, or rim light unless requested. Preserve every explicitly requested feature, pose, expression, material, glow, and visual style. Follow the requested lighting and subject; bright light sources and screens are welcome when the brief calls for them.",
+  "size": [
+    32,
+    32
+  ]
+}

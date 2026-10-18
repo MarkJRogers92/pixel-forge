@@ -570,7 +570,8 @@ GENERATED_DIR = Path.home() / ".codex" / "generated_images"
 
 def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | None,
                          workdir: Path, log: Callable[[str], None] = print,
-                         timeout: int = 900, *, strict_output: bool = False) -> Path:
+                         timeout: int = 900, *, strict_output: bool = False,
+                         reference_image: Path | None = None) -> Path:
     """Ask Codex's image tool (ChatGPT login) for a pixel-art painting; return the PNG path."""
     workdir.mkdir(parents=True, exist_ok=True)
     style = (profile or {}).get("style", "")
@@ -589,12 +590,18 @@ def paint_with_gpt_image(prompt: str, width: int, height: int, profile: dict | N
         f"no shadow on the ground.\n"
         f"After the image is generated, do not edit, inspect or regenerate it. "
         + ("Reply with its exact absolute PNG file path and DONE." if strict_output else "Reply only DONE."))
+    if reference_image is not None:
+        brief += ("\nUse the attached approved image as visual guidance for the new sprite. "
+                  "Preserve its relevant proportions, silhouette and palette feel while drawing "
+                  "the requested subject as a new image.")
     exe = shutil.which("codex") or str(Path.home() / ".local/bin/codex")
     started = time.time()
     log("GPT is painting the base image…")
 
     def paint(model):
         cmd = [exe, "exec", "--skip-git-repo-check", "-s", "read-only", "--color", "never"]
+        if reference_image is not None:
+            cmd += ["-i", str(reference_image)]
         cmd += (["-m", model] if model else []) + ["--", brief]
         try:
             return subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,

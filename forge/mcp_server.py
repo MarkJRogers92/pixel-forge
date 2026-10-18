@@ -130,6 +130,9 @@ def _workflow_response(result: dict, log: list[str]) -> list:
     "Preferred workflow: one GPT pixel-art-style reference -> free RD neural fixer at target size "
     "-> conservative cleanup/QA -> review sheet at 1x/2x. Uses GPT allowance and the existing RD "
     "key; fixer spends no RD balance. input_png reuses an existing reference and skips GPT. "
+    "reference_png attaches one local approved image to guide newly generated GPT art; it cannot "
+    "be combined with input_png. This option is available only on the local CLI and unrestricted "
+    "MCP server, not restricted workflow surfaces. "
     "No Claude, judging, paid RD generation or automatic retries. Returns awaiting_visual_review: "
     "the calling agent must visually review requirements, then optionally forge_repair and "
     "review again, then forge_open in Aseprite. out copies a candidate without overwriting; "
@@ -140,12 +143,14 @@ def forge_prepare(prompt: str, width: int | None = None, height: int | None = No
                   profile: str | None = None, project: str | None = None,
                   input_png: str | None = None, checks: list[str] | None = None,
                   out: str | None = None, open_in: str | None = None,
-                  aseprite_pass: dict | None = None) -> list:
+                  aseprite_pass: dict | None = None,
+                  reference_png: str | None = None) -> list:
     from .fixer_workflow import prepare
     log = []
     return _workflow_response(prepare(prompt, width, height, profile, project, input_png,
                                       checks, out, open_in, log.append,
-                                      aseprite_pass=aseprite_pass), log)
+                                      aseprite_pass=aseprite_pass,
+                                      reference_png=reference_png), log)
 
 
 @server.tool(description=(

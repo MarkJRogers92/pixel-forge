@@ -17,7 +17,7 @@ WORKFLOW_WRITES = {
 }
 WORKFLOW_TOOLS = {*WORKFLOW_WRITES, "forge_workflow_status"}
 FORBIDDEN_FIELDS = {
-    "input_png", "input_path", "out", "output", "output_path", "path", "doc",
+    "input_png", "input_path", "reference_png", "out", "output", "output_path", "path", "doc",
     "open_in", "routes", "route", "shell", "command", "script", "backend", "model",
     "artist", "refiner", "api_key", "credential",
 }

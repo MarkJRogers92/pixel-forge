@@ -11,6 +11,12 @@ Preferred: checklist → GPT pixel-art reference → RD neural fixer → Forge c
 ./forge.sh from-aseprite /absolute/path/sprite.aseprite --name "<asset edited>"
 ```
 
+Before making a batch of animated assets, run a small trial: take one approved sprite through a
+short walk cycle, export a GIF with `forge animate`, and preview it at actual game size on a
+representative background. Check that the character keeps a stable appearance and scale, its feet
+meet the ground, weapons are present and unclipped, and the loop reads cleanly. Try the sprite in
+a tiny tile scene before expanding the batch. Portrait-first remains optional.
+
 The following competition workflow is available when an asset needs alternate drafts. It produced the final arcade cabinet (2026-09-29).
 
 ## 1. Brief → checklist

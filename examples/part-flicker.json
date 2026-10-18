@@ -1,0 +1,23 @@
+{
+  "width": 9,
+  "height": 6,
+  "palette": {
+    "k": "#202634",
+    "b": "#4d8294",
+    "w": "#fff0a8"
+  },
+  "parts": {
+    "lamp": ["kkk", "k.b", "kkk"]
+  },
+  "ops": [
+    {"op": "rect", "x": 0, "y": 0, "w": 9, "h": 6, "c": "k"},
+    {"op": "rect", "x": 1, "y": 4, "w": 7, "h": 1, "c": "b"},
+    {"op": "part", "name": "lamp", "x": 1, "y": 1},
+    {"op": "part", "name": "lamp", "x": 5, "y": 1}
+  ],
+  "frames": [
+    [],
+    [{"op": "pixels", "x": 3, "y": 2, "rows": ["w"]}],
+    [{"op": "pixels", "x": 7, "y": 2, "rows": ["w"]}]
+  ]
+}

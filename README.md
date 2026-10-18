@@ -59,7 +59,11 @@ then saves the original, fixer output, cleaned sprite, QA and a review sheet.
 It returns `awaiting_visual_review`: Dot inspects the sheet at 1x/2x before
 requesting a repair or opening Aseprite. Claude is not called by `prepare`.
 Use `--input reference.png` to reuse an image and skip GPT generation.
+Use `--ref approved.png` to attach an approved local image as guidance for NEW GPT art;
+the CLI and unrestricted MCP `forge_prepare` expose this as `reference_png`. These options
+are mutually exclusive. Restricted workflow MCP/HTTP/browser tools do not expose local image paths.
 See [FIXER-WORKFLOW.md](FIXER-WORKFLOW.md) for repair, Aseprite and connection details.
+For optional prompt guidance on clear silhouettes and restrained detail, see [PROMPT-BIBLE.md](PROMPT-BIBLE.md).
 The AI panel's Create tab uses this same workflow by default. Cancelling stops
 local work when possible, but cannot refund provider credits already spent.
 The older competing-drafts mode remains available. For an optional guided
@@ -183,9 +187,17 @@ Pixel Forge now pulls in the other pixel-art tools instead of replacing them:
 
   ```bash
   ./forge.sh animate frame0.png frame1.png frame2.png -o out/clip --tag flicker --fps 12 --loop pingpong
+  ./forge.sh animate --program examples/part-flicker.json -o out/flicker --fps 8
   ./forge.sh animate --library 20261012-sign-off --library 20261012-sign-on -o out/sign --game phaser
   ./forge.sh animate --library s1 --library s2 -o out/clip --type packed --trim --extrude --shape-padding 2
   ```
+
+  `--program` renders common artwork once and each listed frame independently on top of it;
+  common details stay in every frame. A sprite program can also define reusable literal
+  `parts`; see [the authoring notes and example](PXL-IDEAS.md). To animate edits over an
+  approved PNG, pass `--base sprite.png` and set the program's `"base": "current"`.
+  The base must have binary transparency (alpha 0 or 255), and its existing palette keys
+  keep their colors; use a new key for added colors.
 
 - **Normal maps + lighting** (`forge normalmap`, `forge lit`, `forge_normalmap`,
   `forge_lit_preview`): give a sprite volume under a 2D light. Height comes from the

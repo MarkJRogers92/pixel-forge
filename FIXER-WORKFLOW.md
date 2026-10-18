@@ -11,6 +11,9 @@ optional targeted repair. Aseprite is the final editable canvas.
 ./forge.sh prepare "1990s pink arcade claw machine" --project dead-mall -W 64 -H 96 \
   --check "cabinet and claw identifiable at 1x" \
   --check "toy shapes visible through glass" --check "no lettering"
+# Approved image guides NEW GPT art; input/--input instead skips GPT.
+./forge.sh prepare "pink arcade claw machine" --project dead-mall -W 64 -H 96 \
+  --ref /absolute/path/approved-style.png
 # Existing reference: skips GPT generation.
 ./forge.sh prepare "1990s pink arcade claw machine" --project dead-mall -W 64 -H 96 \
   --input /absolute/path/reference.png
@@ -40,6 +43,9 @@ Every new Library item contains:
 - `review.png`: current sprite, fixer output and scaled reference at 1x/2x and zoom.
 - `review.json`: checklist and pending Dot review instructions.
 - `work/gpt_painting.png`, `fixer_input.png`, `rd_neural.png`, `cleaned.png`.
+- When `--ref` is supplied, `work/approved_reference.png` plus source path and SHA-256
+  provenance in `meta.json`; the copy is attached to the GPT request. `--input` and `--ref`
+  cannot be combined.
 
 Return status is `awaiting_visual_review`. Dot must inspect the review sheet for
 identity, readability, style and the checklist. Record that judgment in the chat;
@@ -94,6 +100,8 @@ final filename when approved. Game files are not changed by this workflow.
 
 The local CLI and unrestricted `forge.sh mcp` expose `forge_prepare` and
 `forge_repair`; MCP returns the review sheet as an image alongside JSON.
+`forge_prepare` accepts `reference_png` on these unrestricted surfaces to guide new GPT art.
+Restricted workflow MCP/HTTP/browser surfaces do not expose local image paths and remain unchanged.
 Both tools declare non-read-only, non-idempotent, open-world behavior.
 The existing `make` pipeline remains available for Claude/GPT competitions.
 

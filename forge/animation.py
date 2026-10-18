@@ -16,6 +16,40 @@ from pathlib import Path
 from . import aseprite_ops
 from .aseprite_ops import AsepriteError
 
+
+def render_frames(program: dict, base=None):
+    """Render each literal animation frame over a fresh copy of common artwork."""
+    from . import dsl
+
+    if not isinstance(program, dict):
+        raise ValueError("animation program must be a JSON object")
+    frame_ops = program.get("frames")
+    if not isinstance(frame_ops, list) or not frame_ops:
+        raise ValueError("animation program needs a non-empty 'frames' list")
+    if any(not isinstance(ops, list) for ops in frame_ops):
+        raise ValueError("each animation frame must be a list of operations")
+
+    common_program = {key: value for key, value in program.items() if key != "frames"}
+    if base is not None and common_program.get("base") == "current":
+        from .sprite import parse_hex
+
+        for key, color in (common_program.get("palette") or {}).items():
+            if key in base.palette and parse_hex(color) != parse_hex(base.palette[key]):
+                raise ValueError(f"palette key {key!r} conflicts with supplied base color; "
+                                 "choose another key to preserve existing pixels")
+    common = dsl.render(common_program, base)
+    if common.errors:
+        raise ValueError("common animation operations failed: " + "; ".join(common.errors))
+
+    frames = []
+    for index, ops in enumerate(frame_ops):
+        frame_program = {**common_program, "base": "current", "ops": ops}
+        result = dsl.render(frame_program, common.sprite.copy())
+        if result.errors:
+            raise ValueError(f"frame[{index}] operations failed: " + "; ".join(result.errors))
+        frames.append(result.sprite)
+    return frames
+
 # AniDir members read live (api 41): FORWARD=0, REVERSE=1, PING_PONG=2.
 LOOP_DIRS = {"forward": "FORWARD", "reverse": "REVERSE", "pingpong": "PING_PONG"}
 # Aseprite also accepts type="grid", but that layout reads the sprite's grid and

@@ -242,6 +242,7 @@ def main(argv=None):
     prep.add_argument("-W", "--width", type=int); prep.add_argument("-H", "--height", type=int)
     prep.add_argument("--profile"); prep.add_argument("--project")
     prep.add_argument("--input", dest="input_png", help="reuse an existing reference; skips GPT generation")
+    prep.add_argument("--ref", dest="reference_png", help="attach an approved image as guidance for new GPT art")
     prep.add_argument("--check", action="append", default=[])
     prep.add_argument("-o", "--out", help="copy the review candidate; never overwrites")
     prep.add_argument("--open", dest="open_in", choices=editors.EDITORS,
@@ -320,6 +321,8 @@ def main(argv=None):
                     help="use a library item's sprite.png as a frame (repeatable, in order)")
     an.add_argument("--steps", action="append", default=[],
                     help="use a library item's work/step_*.png review steps as frames (repeatable)")
+    an.add_argument("--program", help="render animation frames from one sprite program JSON file")
+    an.add_argument("--base", help="base PNG for --program when its base is 'current'")
     an.add_argument("--tag", default="animation")
     an.add_argument("--fps", type=float, default=10.0)
     an.add_argument("--loop", default="forward", choices=sorted(animation.LOOP_DIRS))
@@ -459,7 +462,7 @@ def main(argv=None):
     elif a.cmd == "prepare":
         dump(prepare(a.prompt, a.width, a.height, a.profile, a.project, a.input_png,
                      a.check, a.out, a.open_in, log=lambda m: print(m, file=sys.stderr),
-                     aseprite_pass=_pass_spec(a)))
+                     aseprite_pass=_pass_spec(a), reference_png=a.reference_png))
     elif a.cmd == "pixellab-style-test":
         profile_id = a.profile
         if a.project:
@@ -561,16 +564,35 @@ def main(argv=None):
         except (ValueError, OSError) as exc:
             raise SystemExit(str(exc)) from exc
     elif a.cmd == "animate":
-        frames = [Sprite.from_image(load_image(Path(p).read_bytes())) for p in a.frames]
-        for item in a.library:
-            frames.append(Sprite.from_image(load_image(library.item_path(item).read_bytes())))
-        for item in a.steps:
-            work = library.item_path(item).parent / "work"
-            steps = sorted(work.glob("step_*.png"),
-                           key=lambda p: int("".join(ch for ch in p.stem if ch.isdigit()) or 0))
-            frames += [Sprite.from_image(load_image(p.read_bytes())) for p in steps]
-        if not frames:
-            raise SystemExit("animate needs frames: pass PNG paths, --library IDs and/or --steps IDs")
+        if a.program:
+            if a.frames or a.library or a.steps:
+                raise SystemExit("animate --program cannot be combined with PNG, --library, or --steps frames")
+            try:
+                program = json.loads(Path(a.program).read_text())
+                if a.base and (not isinstance(program, dict) or program.get("base") != "current"):
+                    raise ValueError("--base requires the program to set base to 'current'")
+                base = None
+                if a.base:
+                    base_image = load_image(Path(a.base).read_bytes())
+                    if any(base_image.getchannel("A").histogram()[1:255]):
+                        raise ValueError("--base PNG must use binary alpha (only 0 or 255)")
+                    base = Sprite.from_image(base_image)
+                frames = animation.render_frames(program, base)
+            except (OSError, ValueError) as e:
+                raise SystemExit(f"animate --program: {e}") from e
+        else:
+            if a.base:
+                raise SystemExit("animate --base requires --program")
+            frames = [Sprite.from_image(load_image(Path(p).read_bytes())) for p in a.frames]
+            for item in a.library:
+                frames.append(Sprite.from_image(load_image(library.item_path(item).read_bytes())))
+            for item in a.steps:
+                work = library.item_path(item).parent / "work"
+                steps = sorted(work.glob("step_*.png"),
+                               key=lambda p: int("".join(ch for ch in p.stem if ch.isdigit()) or 0))
+                frames += [Sprite.from_image(load_image(p.read_bytes())) for p in steps]
+            if not frames:
+                raise SystemExit("animate needs frames: pass PNG paths, --library IDs and/or --steps IDs")
         dump(animation.animate(frames, a.out, tag=a.tag, fps=a.fps, loop=a.loop,
                                sheet_type=a.sheet_type, data_format=a.data_format, game=a.game,
                                trim=a.trim, extrude=a.extrude,

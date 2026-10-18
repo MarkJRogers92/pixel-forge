@@ -1,6 +1,7 @@
 """The preferred image workflow preserves art and pauses for real visual review."""
 import base64
 import asyncio
+import hashlib
 import importlib
 import io
 import json
@@ -91,6 +92,83 @@ def test_prepare_generates_one_gpt_reference_with_checks_then_fixes(tmp_path, mo
     assert len(seen) == 1 and "no lettering" in seen[0]
     meta = json.loads((library.ROOT / result["library_id"] / "meta.json").read_text())
     assert meta["provider_calls"]["gpt_image"] == 1
+
+
+def test_prepare_attaches_approved_reference_and_records_immutable_provenance(tmp_path, monkeypatch):
+    monkeypatch.setattr(library, "ROOT", tmp_path / "library")
+    reference = tmp_path / "approved.png"
+    reference.write_bytes(png_bytes(sample_image()))
+    source_bytes = reference.read_bytes()
+    attached = []
+
+    def paint(prompt, width, height, profile, workdir, log, **kwargs):
+        attached.append(kwargs.get("reference_image"))
+        path = workdir / "gpt_painting.png"
+        sample_image().save(path)
+        return path
+
+    monkeypatch.setattr(artist, "paint_with_gpt_image", paint)
+    install_http(monkeypatch, sample_image(), [])
+    result = cli.prepare("pink cabinet", 32, 48, reference_png=str(reference))
+
+    meta = json.loads((library.ROOT / result["library_id"] / "meta.json").read_text())
+    saved = library.ROOT / result["library_id"] / "work" / "approved_reference.png"
+    assert attached == [saved]
+    assert saved.is_file() and Image.open(saved).size == (32, 48)
+    assert meta["reference"] == {
+        "source": str(reference.resolve()),
+        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "saved_path": str(saved),
+    }
+    assert reference.read_bytes() == source_bytes
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"input_png": "input.png", "reference_png": "guide.png"},
+    {"reference_png": "missing.png"},
+    {"reference_png": "invalid.png"},
+])
+def test_prepare_rejects_reference_errors_before_credentials_or_providers(tmp_path, monkeypatch, kwargs):
+    for name in ("input.png", "guide.png"):
+        (tmp_path / name).write_bytes(png_bytes(sample_image()))
+    (tmp_path / "invalid.png").write_bytes(b"not an image")
+    from forge import rd_fixer
+    monkeypatch.setattr(rd_fixer, "require_key", lambda: pytest.fail("credentials checked too early"))
+    monkeypatch.setattr(artist, "paint_with_gpt_image", forbid_models)
+    monkeypatch.setattr(rd_fixer, "neural_fixer", forbid_models)
+    with pytest.raises(ValueError, match="reference"):
+        cli.prepare("cabinet", 32, 48, **{k: str(tmp_path / v) for k, v in kwargs.items()})
+
+
+def test_codex_backend_attaches_reference_as_an_image(tmp_path, monkeypatch):
+    import subprocess
+    image = tmp_path / "approved.png"
+    image.write_bytes(png_bytes(sample_image()))
+    seen = []
+
+    def run(cmd, **kwargs):
+        seen.extend(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(artist.subprocess, "run", run)
+    monkeypatch.setattr(artist, "GENERATED_DIR", tmp_path / "generated")
+    with pytest.raises(artist.ArtistError, match="did not produce"):
+        artist.paint_with_gpt_image("cabinet", 32, 48, None, tmp_path / "work",
+                                    reference_image=image)
+    assert seen[seen.index("-i") + 1] == str(image)
+
+
+def test_cli_prepare_forwards_ref_as_generation_guidance(monkeypatch, capsys):
+    received = {}
+
+    def prepare(*args, **kwargs):
+        received.update(kwargs)
+        return {"status": "awaiting_visual_review"}
+
+    monkeypatch.setattr(cli, "prepare", prepare)
+    cli.main(["prepare", "cabinet", "--ref", "/tmp/approved.png"])
+    assert received["reference_png"] == "/tmp/approved.png"
+    assert json.loads(capsys.readouterr().out)["status"] == "awaiting_visual_review"
 
 
 def test_neural_fixer_bounds_upload_without_losing_alpha(monkeypatch):
@@ -273,6 +351,13 @@ def test_workflow_mcp_returns_visual_review_and_honest_annotations(tmp_path, mon
     from forge.mcp_server import server
     monkeypatch.setattr(library, "ROOT", tmp_path / "library")
     monkeypatch.setattr(artist, "make_backend", forbid_models)
+
+    def paint(prompt, width, height, profile, workdir, log, **kwargs):
+        path = workdir / "gpt_painting.png"
+        sample_image().save(path)
+        return path
+
+    monkeypatch.setattr(artist, "paint_with_gpt_image", paint)
     source = tmp_path / "input.png"
     sample_image().save(source)
     install_http(monkeypatch, sample_image(), [])
@@ -292,6 +377,16 @@ def test_workflow_mcp_returns_visual_review_and_honest_annotations(tmp_path, mon
         data = json.loads(result.content[0].text)
         assert data["status"] == "awaiting_visual_review"
         assert "visual approval" in data["review"]["instructions"]
+        reference = tmp_path / "approved.png"
+        sample_image().save(reference)
+        guided = await server.call_tool("forge_prepare", {
+            "prompt": "cabinet", "width": 32, "height": 48,
+            "reference_png": str(reference)})
+        assert not guided.is_error
+        guided_meta = json.loads(guided.content[0].text)
+        assert guided_meta["status"] == "awaiting_visual_review"
+        item_meta = json.loads((Path(guided_meta["png"]).parent / "meta.json").read_text())
+        assert item_meta["reference"]["source"] == str(reference.resolve())
 
     asyncio.run(check())
 

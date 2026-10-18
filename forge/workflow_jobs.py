@@ -4,6 +4,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -140,6 +141,30 @@ class WorkflowJobs:
         if not path.is_file() or path.stat().st_nlink != 1:
             raise JobError('ASSET_NOT_FOUND')
         return path
+
+    def clip_sources(self, args):
+        """Resolve only listed sprites and bound the complete clip's 2x review."""
+        from . import clip
+        paths, size = [], None
+        total_bytes = total_pixels = 0
+        for item_id in args['source_library_ids']:
+            path = self.item_file(item_id)
+            with readonly_mcp._image(path) as image:
+                if size is not None and image.size != size:
+                    raise JobError('CANVAS_MISMATCH')
+                size = image.size
+                total_pixels += image.width * image.height
+            total_bytes += path.stat().st_size
+            if total_bytes > clip.MAX_CLIP_BYTES or total_pixels > clip.MAX_SOURCE_PIXELS:
+                raise JobError('LIMIT_EXCEEDED')
+            paths.append(path)
+        transform = clip._transform(size, args['width'], args['height'])
+        width, height = transform['target_canvas']
+        columns = math.ceil(math.sqrt(len(paths)))
+        rows = math.ceil(len(paths) / columns)
+        if max(width, height) > 512 or columns * rows * width * height * 4 > 8 * 1024 * 1024:
+            raise JobError('LIMIT_EXCEEDED')
+        return paths
 
     def _folder(self, request_id):
         if not isinstance(request_id, str) or not readonly_mcp.ID_PATTERN.fullmatch(request_id) or len(request_id) > 128:
@@ -313,6 +338,8 @@ class WorkflowJobs:
                 if self.status(previous['request_id']).get('state') in ('starting', 'running', 'cancelling'):
                     raise JobError('BUSY')
             # Resolve approved source/document IDs before starting a provider or editor.
+            if tool == 'forge_clip':
+                self.clip_sources(args)
             source = args.get('source_library_id') or args.get('library_id')
             if source:
                 asset = 'work/gpt_painting.png' if args.get('source_asset') == 'gpt_painting.png' else 'sprite.png'
@@ -372,11 +399,13 @@ class WorkflowJobs:
         return self.status(request_id)
 
     def review_image(self, result):
-        library_id = (result.get('result') or {}).get('library_id')
+        output = result.get('result') or {}
+        library_id = output.get('library_id')
         if not library_id:
             return None
         try:
-            path = self.item_file(library_id, 'review.png')
+            asset = 'sheet@2x.png' if output.get('schema') == 'pixel-forge/clip@1' else 'review.png'
+            path = self.item_file(library_id, asset)
         except JobError as exc:
             if exc.code == 'ASSET_NOT_FOUND':
                 return None

@@ -145,12 +145,22 @@ def _finish(item_id: str, d: Path, sprite: Sprite, meta: dict, destination: Path
 def prepare(prompt: str, width: int | None = None, height: int | None = None,
             profile: str | None = None, project: str | None = None, input_png: str | None = None,
             checks: list[str] | None = None, out: str | None = None, open_in: str | None = None,
-            log=print, progress=None, aseprite_pass: dict | None = None) -> dict:
+            log=print, progress=None, aseprite_pass: dict | None = None,
+            *, reference_png: str | None = None) -> dict:
     if not prompt.strip():
         raise ValueError("a sprite brief is required")
+    if input_png and reference_png:
+        raise ValueError("input_png and reference_png cannot be used together")
     if open_in is not None and open_in not in editors.EDITORS:
         raise ValueError("unknown editor")
     destination = _destination(out, prompt)
+    reference = Path(reference_png).expanduser().resolve() if reference_png else None
+    reference_bytes = None
+    try:
+        reference_bytes = reference.read_bytes() if reference else None
+        reference_image = load_image(reference_bytes) if reference_bytes is not None else None
+    except (OSError, ValueError) as exc:
+        raise ValueError("reference image could not be read or decoded") from exc
     if project and not profile:
         profile = projects.get(project)["id"]
         if not (profiles.ROOT / f"{profile}.json").exists():
@@ -170,9 +180,16 @@ def prepare(prompt: str, width: int | None = None, height: int | None = None,
     item_id, d = library.new_dir(prompt)
     work = d / "work"
     work.mkdir()
+    if reference_image is not None:
+        saved_reference = work / "approved_reference.png"
+        reference_image.save(saved_reference, format="PNG")
     meta = {"kind": "prepare", "workflow": WORKFLOW, "prompt": prompt, "profile": profile,
             "project": project, "checks": checks or [], "status": "preparing",
             "provider_calls": {"gpt_image": 0, "rd_neural_fixer": 0, "claude": 0}}
+    if reference_image is not None:
+        meta["reference"] = {"source": str(reference),
+                              "source_sha256": hashlib.sha256(reference_bytes).hexdigest(),
+                              "saved_path": str(saved_reference)}
     _write_json(d / "meta.json", meta)
     if progress:
         progress("starting", item_id)
@@ -183,7 +200,12 @@ def prepare(prompt: str, width: int | None = None, height: int | None = None,
     else:
         brief = prompt + ("\nRequirements visible at game size:\n- " + "\n- ".join(checks) if checks else "")
         with _stage(d, meta, "gpt_image", "gpt_image", progress=lambda stage: progress(stage, item_id) if progress else None):
-            painting = artist.paint_with_gpt_image(brief, w, h, prof, work, log, strict_output=True)
+            if reference_image is None:
+                painting = artist.paint_with_gpt_image(brief, w, h, prof, work, log, strict_output=True)
+            else:
+                painting = artist.paint_with_gpt_image(
+                    brief, w, h, prof, work, log, strict_output=True,
+                    reference_image=saved_reference)
     original = painting.read_bytes()
     meta["source_sha256"] = hashlib.sha256(original).hexdigest()
     image = load_image(original)

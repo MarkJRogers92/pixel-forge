@@ -85,6 +85,22 @@ Aseprite-backed `forge animate` workflow remains separate and unchanged. This
 manifest's `sheet.json` is its grid contract, not the Aseprite atlas format used
 by `godot-frames`.
 
+## MCP access
+
+The unrestricted local MCP server (`forge.sh mcp`) exposes `forge_clip` with
+`frames` (ordered PNG paths), `out_dir` (a new directory), and the same optional
+`width`, `height`, `fps`, `loop`, `palette`, `profile`, and `tag` options. It returns
+the report plus both 1x and 2x sheets. It never invokes providers or Aseprite.
+
+The restricted `mcp-workflow` server also exposes `forge_clip`, using only
+`source_library_ids` and a stable `request_id`. It writes a new library item,
+returns immediately, and delivers the 2x sheet through `forge_workflow_status`.
+It accepts dimensions, FPS, loop, tag, and an optional fixed RGB palette, with
+strict bounds and no caller-selected filesystem paths. See [WORKFLOW-MCP.md](WORKFLOW-MCP.md)
+for the restricted limits and deployment/discovery checks. Existing permission
+flags and connection settings remain unchanged; refresh tool discovery after
+the updated code is installed.
+
 ## Preparing source animation
 
 The following advice is adapted from the creator-written explanation by

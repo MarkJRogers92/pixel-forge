@@ -26,6 +26,10 @@ Colour "~" or omitted "c" in erase contexts = transparent.
       literal pixel rows; "." or " " = leave unchanged, "~" = erase, other chars = palette keys.
       THIS IS YOUR MOST PRECISE TOOL: use it for faces, hands, lettering-free details,
       highlights and anything small. Rows must be the same length.
+- {"op":"part","name":"lamp","x":10,"y":4}
+      stamp a named literal part. Define parts at the top level as rectangular string rows,
+      e.g. "parts":{"lamp":[".b.","bwb"]}; rows use this program's palette,
+      "." / space leave pixels unchanged, and "~" erases. Parts do not contain ops.
 - {"op":"fill","x":5,"y":5,"c":"b"}                             flood fill (4-connected)
 - {"op":"replace","from":"b","to":"c","x":0,"y":0,"w":8,"h":8}  region optional
 - {"op":"erase","x":0,"y":0,"w":2,"h":2}

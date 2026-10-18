@@ -46,6 +46,7 @@ class Canvas:
     def __init__(self, sprite: Sprite, program: dict):
         self.s = sprite
         self.ramps: dict[str, list[str]] = program.get("ramps") or {}
+        self.parts = program.get("parts") or {}
         self.light = program.get("light", "top-left")
         self.clip: tuple[int, int, int, int] | None = None
 
@@ -174,6 +175,22 @@ def op_pixels(cv, op):
             if ch in SKIP:
                 continue
             cv.put(ox + i, oy + j, TRANSPARENT if ch == ERASE else cv.color(ch))
+
+
+def op_part(cv, op):
+    """Stamp one named literal pixel-row part using the shared program palette."""
+    name = op.get("name")
+    if not isinstance(name, str) or not isinstance(cv.parts, dict) or name not in cv.parts:
+        raise ValueError(f"unknown part {name!r}")
+    rows = cv.parts[name]
+    if (not isinstance(rows, list) or not rows or
+            any(not isinstance(row, str) for row in rows) or
+            any(len(row) != len(rows[0]) for row in rows)):
+        raise ValueError(f"part {name!r} must be a non-empty rectangular list of strings")
+    if any(ch not in SKIP and ch != ERASE and ch not in cv.s.palette
+           for row in rows for ch in row):
+        raise ValueError(f"part {name!r} contains a character outside the shared palette")
+    op_pixels(cv, {"x": op.get("x", 0), "y": op.get("y", 0), "rows": rows})
 
 
 def op_points(cv, op):
@@ -687,7 +704,7 @@ def op_aseprite_quantize(cv, op):
 
 OPS = {
     "rect": op_rect, "ellipse": op_ellipse, "circle": op_ellipse, "poly": op_poly,
-    "line": op_line, "pixels": op_pixels, "points": op_points, "fill": op_fill,
+    "line": op_line, "pixels": op_pixels, "part": op_part, "points": op_points, "fill": op_fill,
     "replace": op_replace, "erase": op_erase, "mirror": op_mirror, "copy": op_copy,
     "outline": op_outline, "shade": op_shade, "dither": op_dither, "noise": op_noise,
     "clip": op_clip, "shift": op_shift,

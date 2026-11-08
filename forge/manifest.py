@@ -345,11 +345,27 @@ def build_manifest(primary, *, frames=None, reference=None, direction=DEFAULT_DI
         fps = float(animation.get("fps", 10.0))
         if fps <= 0:
             raise ManifestError("fps must be positive")
+        from .animation import validate_durations_ms
+        try:
+            durations_ms = validate_durations_ms(animation.get("durations_ms"), len(frame_map))
+        except ValueError as exc:
+            raise ManifestError(str(exc)) from exc
         manifest["animations"][animation.get("name", "animation")] = {
             "fps": fps, "loop": loop,
             "frames": [{"id": fid, "path": f"frames/{fid}.png"} for fid in frame_map],
             "per_direction": {d: list(frame_map) for d in dirs},
         }
+        record = manifest["animations"][animation.get("name", "animation")]
+        if durations_ms is not None:
+            record.update(durations_ms=durations_ms, total_duration_ms=sum(durations_ms),
+                          fps=1000 / durations_ms[0] if len(set(durations_ms)) == 1 else None)
+            for frame, milliseconds in zip(record["frames"], durations_ms):
+                frame["duration_ms"] = milliseconds
+        if "gif_loop_count" in animation:
+            count = animation["gif_loop_count"]
+            if count is not None and (type(count) is not int or not 0 <= count <= 65535):
+                raise ManifestError("gif_loop_count must be null or an integer in 0..65535")
+            record["gif_loop_count"] = count
     if normal_map:
         manifest["normal_map_request"] = normal_map
     if prompt is not None:
@@ -450,6 +466,14 @@ def export_manifest(folder, primary: Sprite, *, frames=None, reference=None,
         sheet.alpha_composite(frame_map[fid].to_image(), (x, y))
     sheet.save(folder / "sheet.png")
     sheet_rec["image"] = "sheet.png"
+    if manifest["animations"]:
+        timing = next(iter(manifest["animations"].values()))
+        if "durations_ms" in timing:
+            sheet_rec["durations_ms"] = timing["durations_ms"]
+            sheet_rec["total_duration_ms"] = timing["total_duration_ms"]
+            sheet_rec["frame_durations_ms"] = dict(zip(order, timing["durations_ms"]))
+        if "gif_loop_count" in timing:
+            sheet_rec["gif_loop_count"] = timing["gif_loop_count"]
     (folder / "sheet.json").write_text(json.dumps(sheet_rec, indent=1))
 
     outputs = [{"kind": "sprite", "path": "sprite.png",

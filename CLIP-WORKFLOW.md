@@ -131,3 +131,11 @@ creator's approximately 1.6-second duration as approximate, not a validation
 rule. Extract frames externally at a deliberate FPS without interpolation, and
 inspect their order and alpha before importing. No new generation backend or
 video extraction service is included in this command.
+
+## Animated GIF input
+
+For downloaded GIFs (including animations made in normal ChatGPT), use
+`forge gif-import input.gif -o out/clip`. It composes GIF delta frames and retains
+source delays and repeat counts before calling this shared-canvas/palette path.
+No API key is needed. See [GIF-WORKFLOW.md](GIF-WORKFLOW.md) for palette choices,
+Aseprite export, limits, and the separate opt-in GPT Image 2.6 API adapter.

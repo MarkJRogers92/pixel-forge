@@ -314,6 +314,29 @@ def main(argv=None):
     cl_palette.add_argument("--palette", help="shared comma-separated opaque hex colours; preserves source alpha")
     cl_palette.add_argument("--profile", help="use an existing profile's fixed palette for every frame")
 
+    for command in ("gif-import", "gif-generate"):
+        gi = sub.add_parser(command, help=("import a downloaded animated GIF locally" if command == "gif-import"
+                                          else "prepare a GIF request offline; paid generation is explicit opt-in"))
+        gi.add_argument("source" if command == "gif-import" else "prompt")
+        gi.add_argument("-o", "--out", required=True, help="new output directory (never overwritten)")
+        gi.add_argument("-W", "--width", type=int, help="target sprite canvas width, not provider image size")
+        gi.add_argument("-H", "--height", type=int, help="target sprite canvas height")
+        gi.add_argument("--tag", default="clip")
+        gi.add_argument("--project", dest="save_project", action="store_true", help="also export editable Aseprite project")
+        gp = gi.add_mutually_exclusive_group()
+        gp.add_argument("--palette", help="shared comma-separated opaque hex colours")
+        gp.add_argument("--profile", help="existing shared game palette")
+        if command == "gif-import":
+            gi.add_argument("--default-duration-ms", type=int, help="explicit delay only for missing/zero GIF timings")
+        else:
+            from .gif_provider import MODELS
+            gi.add_argument("--model", choices=MODELS, default=MODELS[0])
+            gi.add_argument("--frames", dest="frame_count", type=int, default=9)
+            gi.add_argument("--frame-duration-ms", type=int, default=200)
+            gi.add_argument("--size", default="auto", help="provider output size, auto or WIDTHxHEIGHT")
+            gi.add_argument("--ref", dest="reference", help="still PNG/JPEG/WebP sent to OpenAI only on paid execution")
+            gi.add_argument("--execute-paid", action="store_true", help="make ONE billable API request; requires GIF preview access")
+
     an = sub.add_parser("animate", help="build an animation and export a sprite sheet + GIF")
     an.add_argument("frames", nargs="*", help="frame PNGs, in playback order")
     an.add_argument("-o", "--out", required=True, help="output directory")
@@ -562,6 +585,22 @@ def main(argv=None):
             dump(clip.import_clip(a.frames, a.out, width=a.width, height=a.height,
                                   fps=a.fps, loop=a.loop, tag=a.tag, palette=palette, profile=a.profile))
         except (ValueError, OSError) as exc:
+            raise SystemExit(str(exc)) from exc
+    elif a.cmd in ("gif-import", "gif-generate"):
+        from .gif_clip import import_gif
+        from .gif_workflow import generate_clip
+        palette = [c.strip() for c in a.palette.split(",")] if a.palette is not None else None
+        options = dict(width=a.width, height=a.height, palette=palette, profile=a.profile,
+                       tag=a.tag, save_project=a.save_project)
+        try:
+            if a.cmd == "gif-import":
+                result = import_gif(a.source, a.out, default_duration_ms=a.default_duration_ms, **options)
+            else:
+                result = generate_clip(a.prompt, a.out, execute_paid=a.execute_paid, model=a.model,
+                    frame_count=a.frame_count, frame_duration_ms=a.frame_duration_ms,
+                    size=a.size, reference=a.reference, **options)
+            dump(result)
+        except (ValueError, OSError, RuntimeError) as exc:
             raise SystemExit(str(exc)) from exc
     elif a.cmd == "animate":
         if a.program:

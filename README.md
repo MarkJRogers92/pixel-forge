@@ -364,3 +364,12 @@ See `TOOLS.md` for what was adopted from the research handoffs, what was tested 
 ## Licences
 Piskel is Apache-2.0 (see `editor/LICENSE`). Your project art is only read, never
 modified; reference copies go to `profiles/refs/`.
+
+### Animated GIFs
+
+`./forge.sh gif-import downloaded.gif -o out/clip -W 64 -H 64 --profile dead-mall`
+imports GIFs made in normal ChatGPT or elsewhere without an API key, preserving
+motion, frame delays and repeat counts through the stable clip workflow. Add
+`--project` for an editable Aseprite animation. An optional GPT Image 2.6 API
+adapter is offline by default and requires explicit paid opt-in and GIF preview
+access. See [GIF-WORKFLOW.md](GIF-WORKFLOW.md).

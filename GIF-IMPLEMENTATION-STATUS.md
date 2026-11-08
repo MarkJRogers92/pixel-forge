@@ -38,7 +38,7 @@ git diff --check
 The Aseprite path above is the test machine's existing installation, not a path
 to configure on another computer. Use that computer's installed executable.
 
-## Remaining boundaries
+## Original package boundaries
 
 - No billable image request was made. Preview entitlement, actual cost and
   generation quality still need a separately authorized live check.
@@ -50,3 +50,23 @@ to configure on another computer. Use that computer's installed executable.
   silhouette, palette, motion and loop seam yourself before game integration.
 
 Usage and documented limits: [GIF-WORKFLOW.md](GIF-WORKFLOW.md).
+
+## Mac integration follow-up (2026-11-08)
+
+The user authorized integration and a GitHub update after the original package.
+The existing Mac checkout was clean. Its prior installed branch
+`codex/stable-clip-installed-20261018` at `06b3333` had the same source tree as
+GitHub main `673f07e`; the prior branch remains intact. The implementation was
+applied to `feat/gif-animation-bridge` in the existing checkout, without changes
+to the game, art library, editor submodule, credentials or unrelated files.
+
+Mac verification: **487 passed, 0 failed, 0 skipped** with Python 3.11.16 and
+Pillow 12.3.0, including real installed Aseprite exports and reopen checks.
+`compileall` and `git diff --check` also passed. The existing Pillow deprecation
+warning remains. Aseprite startup and worker process-group tests require normal
+local process access; an initial command-sandbox run could not perform them,
+and the full suite passed outside that sandbox.
+
+The installed CLI exposes `gif-import` and its offline `gif-generate` preview.
+No billable generation request was made. GitHub publication uses a feature
+branch/draft pull request; merging main and deployment are separate actions.

@@ -27,7 +27,7 @@ MAX_SOURCE_PIXELS = 64 * 1024 * 1024
 MAX_OUTPUT_PIXELS = 16 * 1024 * 1024
 
 
-def _load_frames(paths):
+def _load_frames(paths, *, allow_empty=False):
     images, sources = [], []
     total_bytes = total_pixels = 0
     for path in paths:
@@ -53,7 +53,7 @@ def _load_frames(paths):
                 rgba = image.convert("RGBA")
         except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
             raise ValueError(f"cannot read PNG frame: {path}") from exc
-        if manifest.content_bbox(rgba) is None:
+        if not allow_empty and manifest.content_bbox(rgba) is None:
             raise ValueError(f"empty frame: {path}")
         images.append(rgba)
         sources.append({"path": str(path), "sha256": hashlib.sha256(data).hexdigest(),
@@ -121,7 +121,8 @@ def _map_colors(arr, fixed):
 
 
 def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward",
-                palette=None, profile=None, tag="clip") -> dict:
+                palette=None, profile=None, tag="clip", durations_ms=None,
+                gif_loop_count=None, allow_empty=False) -> dict:
     """Export PNG frames in caller order to a new folder, with measured QA.
 
     Without a palette, preserve visible RGBA colours exactly (up to the sprite
@@ -144,7 +145,7 @@ def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward"
     if out.exists():
         raise ValueError(f"output already exists; choose a new folder: {out}")
     fixed = _fixed_palette(palette, profile)
-    images, sources = _load_frames(paths)
+    images, sources = _load_frames(paths, allow_empty=allow_empty)
     transform = _transform(images[0].size, width, height)
     tw, th = transform["target_canvas"]
     if tw * th * len(images) > MAX_OUTPUT_PIXELS:
@@ -160,7 +161,7 @@ def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward"
                      tuple(transform["offset"]))
         arr = _map_colors(np.asarray(canvas), fixed)
         bbox = manifest.content_bbox(arr)
-        if bbox is None:
+        if bbox is None and source_bbox is not None:
             raise ValueError(f"empty frame after resizing: {paths[i]}; use a larger target canvas")
         arrays.append(arr)
         colors.update(map(tuple, np.unique(arr[arr[..., 3] > 0], axis=0).tolist()))
@@ -169,8 +170,8 @@ def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward"
                              "fixed palette or prepare fewer alpha variants explicitly")
         records.append({"id": fid, "source_bbox": source_bbox, "output_bbox": bbox})
         sw, sh = image.size
-        if (source_bbox[0] == 0 or source_bbox[1] == 0 or source_bbox[2] == sw - 1
-                or source_bbox[3] == sh - 1):
+        if source_bbox is not None and (source_bbox[0] == 0 or source_bbox[1] == 0
+                or source_bbox[2] == sw - 1 or source_bbox[3] == sh - 1):
             warnings.append({"code": "possible_clipping", "frame": fid,
                              "message": "Source content touches the canvas edge; inspect for cutoff. "
                                         "This may be intentional."})
@@ -199,11 +200,20 @@ def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward"
                          "message": "First and last output frames differ; inspect the transition. "
                                     "Frames have not been replaced or reordered."})
 
+    animation = {"name": tag, "fps": float(fps), "loop": loop}
+    if durations_ms is not None:
+        if (not isinstance(durations_ms, (list, tuple)) or len(durations_ms) != len(frames)
+                or any(type(d) is not int or not 1 <= d <= 655350 for d in durations_ms)):
+            raise ValueError("durations_ms needs one positive integer (up to 655350) per frame")
+        if gif_loop_count is not None and (type(gif_loop_count) is not int or not 0 <= gif_loop_count <= 65535):
+            raise ValueError("gif_loop_count must be null or an integer in 0..65535")
+        animation.update(durations_ms=list(durations_ms), gif_loop_count=gif_loop_count)
+
     # Refuse collisions, including an output created since the initial check.
     out.mkdir(parents=True, exist_ok=False)
     exported = manifest.export_manifest(out, frames["f0"], frames=frames,
         reference=sources[0], alignment="canvas", generation=None, profile=profile,
-        animation={"name": tag, "fps": float(fps), "loop": loop})
+        animation=animation)
     verified = manifest.verify_export(out, exported)
     if not verified["ok"]:
         raise ValueError(f"clip export verification failed: {verified['errors']}")
@@ -219,5 +229,11 @@ def import_clip(paths, out, *, width=None, height=None, fps=10.0, loop="forward"
               "review": {"status": "awaiting_visual_review", "sheets": ["sheet.png", "sheet@2x.png"],
                          "instructions": "Inspect frames at 1x/2x for identity, motion, clipping and colour "
                                          "flicker. Numeric QA is not visual approval."}}
+    if durations_ms is not None:
+        report.update(durations_ms=list(durations_ms), total_duration_ms=sum(durations_ms),
+                      gif_loop_count=gif_loop_count,
+                      fps=1000.0 / durations_ms[0] if len(set(durations_ms)) == 1 else None)
+        for record, duration in zip(records, durations_ms):
+            record["duration_ms"] = duration
     (out / "clip-report.json").write_text(json.dumps(report, indent=2) + "\n")
     return report

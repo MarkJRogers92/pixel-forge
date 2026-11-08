@@ -17,6 +17,17 @@ from . import aseprite_ops
 from .aseprite_ops import AsepriteError
 
 
+def validate_durations_ms(durations_ms, count: int, *, maximum: int = 655350):
+    """Validate explicit timing, without rounding or accepting booleans as integers."""
+    if durations_ms is None:
+        return None
+    if (not isinstance(durations_ms, (list, tuple)) or len(durations_ms) != count
+            or any(type(value) is not int or not 1 <= value <= maximum
+                   for value in durations_ms)):
+        raise ValueError(f"durations_ms must contain {count} integers in 1..{maximum}")
+    return list(durations_ms)
+
+
 def render_frames(program: dict, base=None):
     """Render each literal animation frame over a fresh copy of common artwork."""
     from . import dsl
@@ -77,11 +88,11 @@ local frames = json.decode(io.open(app.params.frames):read("a"))
 local dur = tonumber(app.params.duration)
 local spr = Sprite(frames[1].w, frames[1].h, ColorMode.RGB)
 spr:newCel(spr.layers[1], spr.frames[1], Image{ fromFile = frames[1].path }, Point(0, 0))
-spr.frames[1].duration = dur
+spr.frames[1].duration = frames[1].duration_ms and frames[1].duration_ms / 1000 or dur
 for i = 2, #frames do
   local f = spr:newFrame()
   spr:newCel(spr.layers[1], f, Image{ fromFile = frames[i].path }, Point(0, 0))
-  f.duration = dur
+  f.duration = frames[i].duration_ms and frames[i].duration_ms / 1000 or dur
 end
 if app.params.tag ~= "" then
   local t = spr:newTag(spr.frames[1])
@@ -148,13 +159,17 @@ def _atlas_utilisation(data_path, sheet_path=None):
     return round(sum(f["w"] * f["h"] for f in rects) / area, 4) if area else None
 
 
-def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, duration):
+def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, duration,
+                durations_ms=None):
     """A drop-in geometry descriptor for a game engine (see GAMES)."""
     import hashlib
     w, h = size
     rects = (_atlas_frames(data) if data and Path(data).exists()
              else [{"index": i, "x": i * w, "y": 0, "w": w, "h": h,
                     "durationMs": round(duration * 1000)} for i in range(count)])
+    if durations_ms is not None:
+        for rect, milliseconds in zip(rects, durations_ms):
+            rect["durationMs"] = milliseconds
     trimmed = any(f.get("trimmed") for f in rects)
     rotated = any(f.get("rotated") for f in rects)
     descriptor = {
@@ -172,6 +187,11 @@ def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, dura
         "frames": rects,
         "sha256": hashlib.sha256(Path(sheet).read_bytes()).hexdigest(),
     }
+    if durations_ms is not None:
+        descriptor["durationsMs"] = durations_ms
+        descriptor["totalDurationMs"] = sum(durations_ms)
+        descriptor["fps"] = 1000 / durations_ms[0] if len(set(durations_ms)) == 1 else None
+        descriptor["durationMs"] = durations_ms[0] if len(set(durations_ms)) == 1 else None
     if game == "phaser":
         n = len(rects)
         yoyo = "true" if loop == "pingpong" else "false"
@@ -190,6 +210,14 @@ def _descriptor(game, sheet, data, sheet_type, count, size, fps, tag, loop, dura
                           "generateFrameNumbers('<textureKey>', { start: 0, end: " + str(n - 1)
                           + " }), frameRate: " + str(fps) + ", repeat: -1, yoyo: " + yoyo + " })",
         }
+        if durations_ms is not None:
+            # Phaser adds each frame's duration to its base msPerFrame.
+            base_ms = min(durations_ms)
+            descriptor["phaser"]["createAnim"] = (
+                "this.anims.create({ key: '<animKey>', frames: frames.map(f => ({ "
+                "key: '<textureKey>', frame: String(f.index), duration: f.durationMs - "
+                + str(base_ms) + " })), frameRate: " + str(1000 / base_ms)
+                + ", repeat: -1, yoyo: " + yoyo + " })")
         if trimmed:
             descriptor["phaser"]["trimmedNote"] = (
                 "atlas is trimmed: each frame's `spriteSourceSize` is the offset of the "
@@ -209,13 +237,18 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
             game: str | None = None, descriptor_name: str = "animation.json",
             trim: bool = False, extrude: bool = False, shape_padding: int = 0,
             border_padding: int = 0, inner_padding: int = 0, power_of_two: bool = False,
-            merge_duplicates: bool = False, timeout: int = 180) -> dict:
+            merge_duplicates: bool = False, timeout: int = 180,
+            durations_ms: list[int] | None = None) -> dict:
     """Build an animation from `frames` (Sprites of equal size) in `out_dir`.
 
     Exports a sprite-sheet texture (default sheet.png), its JSON atlas
     (sheet.json), an animated GIF for review (animation.gif) and, if
     `project_name` is given, an editable `.aseprite`. `fps` sets every frame's
-    duration; `loop` is "forward", "reverse" or "pingpong".
+    duration unless `durations_ms` supplies one integer millisecond duration per
+    frame (1..65535, the Aseprite file format limit). `loop` is "forward",
+    "reverse" or "pingpong"; it is a direction, not a GIF repetition count.
+    Explicit durations must be multiples of 10 when exporting GIF; use
+    `gif_name=None` to retain other millisecond durations in Aseprite/the atlas.
 
     Sheet packing (all off by default, all measured on Aseprite 1.3.18.6):
     `trim` crops each frame's transparent border and records where it was
@@ -232,6 +265,10 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
     frames = list(frames)
     if not frames:
         raise ValueError("animate needs at least one frame")
+    durations_ms = validate_durations_ms(durations_ms, len(frames), maximum=65535)
+    if durations_ms is not None and gif_name and any(ms % 10 for ms in durations_ms):
+        raise ValueError("durations_ms must be multiples of 10 for exact GIF timing; "
+                         "use gif_name=None for exact Aseprite/atlas millisecond durations")
     if loop not in LOOP_DIRS:
         raise ValueError(f"loop must be one of {sorted(LOOP_DIRS)}")
     if sheet_type == "grid":
@@ -285,6 +322,8 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
             p = t / f"frame_{i:03d}.png"
             f.save(p)
             spec.append({"path": str(p), "w": f.width, "h": f.height})
+            if durations_ms is not None:
+                spec[-1]["duration_ms"] = durations_ms[i]
         spec_path = t / "frames.json"
         spec_path.write_text(json.dumps(spec))
         aseprite_ops.run_batch(_ANIM_LUA, {
@@ -301,6 +340,11 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
     result = {"frames": len(frames), "size": [frames[0].width, frames[0].height],
               "fps": fps, "duration": duration, "tag": tag, "loop": loop,
               "sheet": str(sheet), "sheet_options": sheet_opts}
+    if durations_ms is not None:
+        uniform = len(set(durations_ms)) == 1
+        result.update(durations_ms=durations_ms, total_duration_ms=sum(durations_ms),
+                      fps=1000 / durations_ms[0] if uniform else None,
+                      duration=durations_ms[0] / 1000 if uniform else None)
     if data is not None:
         result["atlas_utilisation"] = _atlas_utilisation(data, sheet)
     for key, path in (("data", data), ("gif", gif), ("project", project)):
@@ -308,7 +352,8 @@ def animate(frames, out_dir, tag: str = "animation", fps: float = 10.0, loop: st
             result[key] = str(path)
     if game:
         descriptor = _descriptor(game, sheet, data, sheet_type, len(frames),
-                                 (frames[0].width, frames[0].height), fps, tag, loop, duration)
+                                 (frames[0].width, frames[0].height), fps, tag, loop, duration,
+                                 durations_ms=durations_ms)
         descriptor_path = out_dir / descriptor_name
         descriptor_path.write_text(json.dumps(descriptor, indent=1))
         result["descriptor"] = str(descriptor_path)

@@ -108,3 +108,49 @@ def test_direct_mcp_module_registers_gif_import_before_serving():
             names = {tool.name for tool in (await client.list_tools()).tools}
             assert 'forge_gif_import' in names
     asyncio.run(check())
+
+
+def test_cli_background_removal_is_opt_in_and_reported(tmp_path):
+    path = source(tmp_path)
+    result = subprocess.run([sys.executable, '-m', 'forge', 'gif-import', str(path),
+                             '-o', str(tmp_path / 'keyed'), '--background-color', '#ff0000'],
+                             capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report['background_removal']['removed_pixels'] == [120, 0]
+    assert report['frames'][0]['output_bbox'] is None
+    assert report['durations_ms'] == [80, 230]
+
+
+def test_mcp_background_options_reach_local_importer(tmp_path):
+    from forge.mcp_server import server
+    async def check():
+        result = await server.call_tool('forge_gif_import', {
+            'source': str(source(tmp_path)), 'out_dir': str(tmp_path / 'keyed'),
+            'background_color': '#ff0000', 'background_tolerance': 0})
+        assert not result.is_error
+        report = json.loads(result.content[0].text)
+        assert report['background_removal']['removed_pixels'] == [120, 0]
+    asyncio.run(check())
+
+
+def test_cli_source_palette_reduction_does_not_require_game_profile(tmp_path):
+    result = subprocess.run([sys.executable, '-m', 'forge', 'gif-import', str(source(tmp_path)),
+                             '-o', str(tmp_path / 'reduced'), '--colors', '1'],
+                             capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report['palette']['mode'] == 'source_reduced'
+    assert len(report['palette']['rgba']) == 1
+
+
+def test_mcp_source_palette_reduction_reaches_importer(tmp_path):
+    from forge.mcp_server import server
+    async def check():
+        result = await server.call_tool('forge_gif_import', {
+            'source': str(source(tmp_path)), 'out_dir': str(tmp_path / 'reduced'), 'colors': 1})
+        assert not result.is_error
+        report = json.loads(result.content[0].text)
+        assert report['palette']['mode'] == 'source_reduced'
+        assert len(report['palette']['rgba']) == 1
+    asyncio.run(check())

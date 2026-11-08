@@ -452,8 +452,11 @@ def forge_project_assets(project: str, contains: str | None = None, limit: int =
 @server.tool(description=(
     "Import a downloaded animated GIF (including normal ChatGPT downloads) locally into a NEW folder. "
     "No API key, provider or credits needed. Preserves composited frames, source timings, GIF repeat "
-    "count, shared canvas and palette. Optional fixed palette/profile maps RGB; no background removal. "
-    "Writes original GIF, PNG frames, sheet/JSON, verified GIF preview and review report. "
+    "count, shared canvas and palette. Optional colors (1..62) derives one source palette; mutually "
+    "exclusive fixed palette/profile maps RGB instead. background_color "
+    "explicitly keys edge-connected #RGB/#RRGGBB pixels; default retains background. Enclosed details "
+    "survive but matching edge-connected outlines may be erased; review against source. "
+    "Writes original GIF, PNG frames, sheet/JSON, verified GIF preview and review page/report. "
     "save_project also exports editable Aseprite and atlas when installed. Zero/missing delays require "
     "explicit default_duration_ms. Returns sheets; visual motion review is still required."),
     annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
@@ -463,11 +466,14 @@ def forge_gif_import(source: str, out_dir: str,
                      height: Annotated[int, Field(strict=True)] | None = None,
                      palette: list[str] | None = None, profile: str | None = None,
                      tag: str = 'clip', default_duration_ms: Annotated[int, Field(strict=True)] | None = None,
-                     save_project: bool = False) -> list:
+                     save_project: bool = False, background_color: str | None = None,
+                     background_tolerance: Annotated[int, Field(strict=True, ge=0, le=32)] = 0,
+                     colors: Annotated[int, Field(strict=True, ge=1, le=62)] | None = None) -> list:
     from .gif_clip import import_gif
     report = import_gif(source, out_dir, width=width, height=height, palette=palette,
                         profile=profile, tag=tag, default_duration_ms=default_duration_ms,
-                        save_project=save_project)
+                        save_project=save_project, background_color=background_color,
+                        background_tolerance=background_tolerance, colors=colors)
     return [json.dumps(report), Image(data=(Path(out_dir).expanduser() / 'sheet.png').read_bytes(), format='png'),
             Image(data=(Path(out_dir).expanduser() / 'sheet@2x.png').read_bytes(), format='png')]
 

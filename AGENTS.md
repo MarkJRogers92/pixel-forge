@@ -53,6 +53,7 @@ Other commands:
 ./forge.sh quantize sprite.png --colors 12 -o reduced.png          # Aseprite engine: reduce colours
 ./forge.sh dither sprite.png --algo error-diffusion --profile dead-mall -o dithered.png   # Aseprite dithering
 ./forge.sh blend base.png glow.png --mode screen --opacity 0.5 -o lit.png                 # Aseprite blend
+./forge.sh gif-import animation.gif -o out/clip --colors 62 -W 64 -H 64 --project # ChatGPT GIF -> review.html + editable clip
 ./forge.sh animate f0.png f1.png f2.png -o out/clip --tag flicker --fps 12 --loop pingpong # sheet + GIF
 ./forge.sh animate --library <id> --library <id> -o out/clip --game phaser                # frames from the library, drop-in Phaser sheet
 ./forge.sh make "<brief>" --project dead-mall -W 32 -H 48 --aseprite-pass quantize        # finish the sprite on the game palette
@@ -65,7 +66,10 @@ MCP (same abilities as tools): `forge_make` (`routes`, `open_in`, `combine`),
 to draw directly), `forge_pixelize`, `forge_dither` / `forge_quantize` /
 `forge_blend` (Aseprite engine passes), `forge_animate` (frames -> sprite sheet + GIF),
 `forge_clip` (ordered PNGs -> stable shared-transform/palette clip; no Aseprite/provider),
-`forge_status`, `forge_project_assets`.
+`forge_gif_import` (downloaded ChatGPT GIF -> local review, optional source palette/keying),
+`forge_status`, `forge_project_assets`. See `GIF-WORKFLOW.md` before importing GIFs.
+Prefer `colors=62` to retain the source look; use a game profile only when requested.
+Never remove a background automatically; keying is an explicit option with outline risks.
 
 ## Workflow for a new asset
 

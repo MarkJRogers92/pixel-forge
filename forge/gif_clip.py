@@ -8,17 +8,81 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import tempfile
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, GifImagePlugin
+from PIL import Image, ImageDraw, GifImagePlugin
 
 from . import clip
 from .cleanup import MAX_INPUT_BYTES, MAX_INPUT_PIXELS
 
 MAX_FRAMES = clip.MAX_FRAMES
 MAX_SOURCE_PIXELS = clip.MAX_SOURCE_PIXELS
+
+
+def _background_key(color, tolerance):
+    if type(tolerance) is not int or not 0 <= tolerance <= 32:
+        raise ValueError('background_tolerance must be an integer in 0..32')
+    if color is None:
+        if tolerance:
+            raise ValueError('background_tolerance requires background_color')
+        return None
+    if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?', color):
+        raise ValueError('background_color must be #RGB or #RRGGBB')
+    from .sprite import parse_hex
+    return parse_hex(color)[:3]
+
+
+def _remove_background(frames, color, tolerance):
+    """Key only four-connected matching pixels reachable from the canvas edge.
+
+    This is deliberately not global color deletion or subject segmentation.
+    Transparent pixels may connect matching regions; enclosed details survive.
+    """
+    removed, warnings = [], [{
+        'code': 'background_removal_review',
+        'message': 'Edge-connected color removal is not subject segmentation. Matching outlines '
+                   'connected to the canvas edge can be erased; enclosed details are retained. '
+                   'Compare with source.gif on light and dark backgrounds before use.'}]
+    result = []
+    for i, frame in enumerate(frames):
+        arr = np.array(frame)
+        visible = arr[..., 3] > 0
+        matches = np.max(np.abs(arr[..., :3].astype(np.int16) - np.array(color)), axis=2) <= tolerance
+        # A one-pixel border connects all canvas edges for a single flood fill.
+        mask = Image.fromarray(np.pad((matches | ~visible).astype(np.uint8), 1, constant_values=1)).copy()
+        ImageDraw.floodfill(mask, (0, 0), 2)
+        erase = (np.asarray(mask)[1:-1, 1:-1] == 2) & visible
+        count = int(erase.sum())
+        removed.append(count)
+        arr[erase] = 0
+        result.append(Image.fromarray(arr))
+        if count and not arr[..., 3].any():
+            warnings.append({'code': 'background_emptied_frame', 'frame': f'f{i}',
+                             'message': 'Background removal cleared every visible pixel; frame and delay retained.'})
+    record = {'method': 'edge_connected', 'color': '#%02x%02x%02x' % tuple(color),
+              'tolerance': tolerance, 'distance': 'maximum absolute RGB channel difference',
+              'connectivity': 4, 'stage': 'source canvas before scaling or palette mapping',
+              'removed_pixels': removed}
+    return result, record, warnings
+
+
+def _source_palette(frames, colors):
+    """One deterministic, bounded sample across every frame, never per-frame palettes."""
+    from .cleanup import kmeans_palette
+    from .sprite import to_hex
+    samples = []
+    per_frame = max(1, 16384 // len(frames))
+    for frame in frames:
+        arr = np.asarray(frame)
+        rgb = arr[..., :3][arr[..., 3] > 0]
+        if len(rgb):
+            samples.append(rgb[np.linspace(0, len(rgb) - 1, min(len(rgb), per_frame), dtype=int)])
+    if not samples:
+        return None
+    return [to_hex(c) for c in kmeans_palette(np.concatenate(samples), colors)]
 
 
 def decode_gif(data: bytes, *, default_duration_ms=None):
@@ -117,13 +181,21 @@ def _write_preview(frames, durations, loop, path):
 
 
 def import_gif(source, out, *, width=None, height=None, palette=None, profile=None,
-               tag='clip', default_duration_ms=None, save_project=False):
+               tag='clip', default_duration_ms=None, save_project=False,
+               background_color=None, background_tolerance=0, colors=None):
     """Import a downloaded GIF, retaining timings, looping and motion.
 
     Existing paths are refused. Completed outputs are published only after all
     local validation succeeds. Optional Aseprite output uses original durations
     and is separate from the source GIF's repeat-count metadata.
     """
+    key = _background_key(background_color, background_tolerance)
+    if colors is not None:
+        from .sprite import KEY_CHARS
+        if type(colors) is not int or not 1 <= colors <= len(KEY_CHARS):
+            raise ValueError(f'colors must be an integer in 1..{len(KEY_CHARS)}')
+        if palette is not None or profile is not None:
+            raise ValueError('choose colors, palette or profile, not more than one')
     source, out = Path(source).expanduser(), Path(out).expanduser()
     if out.exists() or out.is_symlink():
         raise ValueError(f'output already exists; choose a new folder: {out}')
@@ -133,6 +205,12 @@ def import_gif(source, out, *, width=None, height=None, palette=None, profile=No
         data = file.read(MAX_INPUT_BYTES + 1)
     frames, decoded = decode_gif(data, default_duration_ms=default_duration_ms)
     durations, loop = decoded['durations_ms'], decoded['gif_loop_count']
+    background = None
+    if key is not None:
+        frames, background, warnings = _remove_background(frames, key, background_tolerance)
+        decoded['warnings'].extend(warnings)
+    if colors is not None:
+        palette = _source_palette(frames, colors)
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.forge-gif-', dir=out.parent) as temp:
         stage = Path(temp)
@@ -157,14 +235,20 @@ def import_gif(source, out, *, width=None, height=None, palette=None, profile=No
                       sources=[source_record], decoder={'library': 'Pillow',
                       'disposal': decoded['disposal'], 'composited_full_canvas': True})
         report['warnings'].extend(decoded['warnings'])
+        report['background_removal'] = background
+        if colors is not None:
+            report['palette'].update(mode='source_reduced', requested_colors=colors,
+                                     sampling='up to 16384 visible source pixels, evenly sampled per frame')
         report['review']['animation'] = 'animation.gif'
-        report['review']['instructions'] += ' Play animation.gif to review timing and the loop seam.'
+        report['review']['page'] = 'review.html'
+        report['review']['instructions'] += ' Open review.html for source/output playback, frames and QA.'
         report['verified']['gif_preview'] = True
         for i, record in enumerate(report['frames']):
             record['source_frame_index'] = i
         manifest_path = output / 'manifest.json'
         exported = json.loads(manifest_path.read_text())
         exported['reference'] = source_record
+        exported['gif_import'] = {'background_removal': background, 'colors': colors}
         manifest_path.write_text(json.dumps(exported, indent=1))
         if save_project:
             from . import animation
@@ -177,6 +261,8 @@ def import_gif(source, out, *, width=None, height=None, palette=None, profile=No
                                  'note': 'Source repeat count is in manifest.json; Aseprite tag plays forward.'}
         for name in ('gif-report.json', 'clip-report.json'):
             (output / name).write_text(json.dumps(report, indent=2) + '\n')
+        from .gif_review import write_review
+        write_review(output, report)
         # Refuse a destination created since initial validation. mkdir, then move
         # children into our newly reserved directory (never replace user files).
         out.mkdir(exist_ok=False)

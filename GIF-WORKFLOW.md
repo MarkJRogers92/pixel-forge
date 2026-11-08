@@ -8,21 +8,70 @@ this path. A still preview saved as a PNG/JPEG is not an animation and is reject
 Availability of GIF creation in your ChatGPT account is separate from this importer.
 
 ```bash
-# Keep exact canvas and colours (maximum 62 visible colours over the whole clip).
-./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil --tag recoil
+# Keep the ChatGPT look, using one reduced source palette for the whole clip.
+./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil \
+  -W 64 -H 64 --colors 62 --tag recoil --project
 
-# Recommended for a larger/painted GIF: one target canvas and one game palette.
-./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil-small \
+# Open the generated local review page (Mac; elsewhere open it in a browser).
+open out/recoil/review.html
+
+# Choose the game palette instead when matching DEAD MALL is the priority.
+./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil-game \
   -W 64 -H 64 --profile dead-mall --tag recoil
 
-# Also create an editable animation document and Aseprite atlas.
-./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil-editable \
-  -W 64 -H 64 --profile dead-mall --tag recoil --project
+# Keep exact canvas and colors when the clip already has at most 62 colors.
+./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil-exact --tag recoil
 ```
-
 Use a new output directory each time. Original source files are never changed.
 To refine the result, change the palette/canvas and re-import the same GIF. Do
-not generate again merely because import needs different options.
+not generate again merely because import needs different options. `--project` needs
+Aseprite installed; omit it for a completely local import without an editor.
+
+`review.html` works offline from the output folder. It shows the original GIF,
+converted playback with source delays/repeat count, frame stepping and scrubbing,
+1x/2x/4x views, checker/light/dark backgrounds, every frame and grouped QA warnings.
+Play always restarts; Pause, stepping, scrubbing or hiding the page stops the
+player. Original browser GIF playback is independent, not synchronized. Browser
+scheduling can vary; exported timings are authoritative. Keep the whole output
+folder together when moving or sharing it. Open the Aseprite link for manual
+pixel cleanup, or use the PNG frames/sheets in another editor.
+
+### Choosing colors
+
+Choose one of `--colors`, `--palette`, or `--profile`:
+
+- `--colors 62` keeps up to 62 source-derived colors shared by every frame.
+  This is useful for ChatGPT GIFs with more colors than Forge's document limit,
+  without forcing neon accents onto a game palette. It samples up to 16,384
+  visible source pixels evenly per frame and uses deterministic clustering.
+  Colors are reduced, not exact: inspect fine accents. Use a lower count if wanted.
+- `--profile dead-mall` or an explicit `--palette` uses a fixed palette instead.
+- Omit all three for exact visible colors; clips over 62 colors fail explicitly.
+
+### Optional flat-background removal
+
+Backgrounds stay unchanged by default. If a GIF has a flat known background,
+try a separate import with an explicit color key:
+
+```bash
+./forge.sh gif-import ~/Downloads/recoil.gif -o out/recoil-keyed \
+  -W 64 -H 64 --colors 62 --background-color '#000000' --tag recoil --project
+open out/recoil-keyed/review.html
+```
+
+Only four-connected matching pixels reachable from the canvas edge are removed,
+before the shared resize/palette mapping. Enclosed black details are kept; this
+is not global black deletion. Existing transparent pixels can connect regions.
+**Matching outlines connected to the edge can also be erased.** Enclosed pockets
+of background may remain. This is a color key, not AI subject segmentation.
+Compare with the source on both light and dark backgrounds, and repair in Aseprite.
+
+`--background-tolerance 0` (default) requires an exact RGB match. Values 1–32
+allow that maximum difference in each RGB channel; increasing tolerance can
+remove more art. Tolerance requires a background color. The report and manifest
+record the key, tolerance, method and per-frame removed-pixel counts. Completely
+cleared frames are retained with their delays and a warning, never dropped.
+The original `source.gif` is always unchanged.
 
 A useful prompt to paste into ChatGPT alongside a canonical character still:
 
@@ -30,7 +79,9 @@ A useful prompt to paste into ChatGPT alongside a canonical character still:
 > Keep its identity, full silhouette and pixel-art details. Use a fixed camera
 > and one stable canvas, with room for the whole movement. Show anticipation,
 > a clear reaction, and a lively recovery to the starting stance. Keep the
-> background consistent. Return an animated GIF, not a still sprite sheet.
+> background one flat color not used in the character, with no texture or shadow.
+> Leave a clear margin around all limbs and the weapon at the widest point.
+> Return an actual animated GIF, not a still sprite sheet or PNG preview.
 
 The importer cannot fix identity drift, invent better motion, or guarantee a
 smooth loop. Inspect actual 1x and 2x frames and play the preview before approval.
@@ -48,17 +99,17 @@ smooth loop. Inspect actual 1x and 2x frames and play the preview before approva
   is implied by repeat counts.
 - One full-canvas nearest-neighbour transform and one shared palette are used
   by the existing `forge clip` path. No per-frame cropping, recentering, foot
-  pinning, cleanup, background removal, or interpolation is applied. Movement
-  inside the canvas stays movement.
+  pinning, cleanup or interpolation is applied. Background removal is only the
+  explicit optional color key above. Movement inside the canvas stays movement.
 - Missing/zero GIF delays are rejected because viewers interpret them
   differently. `--default-duration-ms 100` explicitly supplies only those
   missing/zero delays and records each replacement. The value must be a positive
   multiple of 10 ms, at most 655350 ms.
 
 GIF cannot represent soft alpha, so backgrounds produced by a generator remain
-unless removed separately. Palette mapping can change visible RGB colours;
-with no palette/profile, the 62-colour document limit is enforced rather than
-silently quantizing. A fully opaque background is retained and warned about.
+unless explicitly keyed. Palette mapping/reduction can change visible RGB colours;
+with no colors/palette/profile, the 62-colour document limit is enforced rather
+than silently quantizing. A fully opaque background is retained and warned about.
 
 Limits match the local clip pipeline: 25 MiB input, 2–256 GIF frames, 16,777,216
 pixels per source frame, 67,108,864 total decoded pixels, 1–1024 pixels per target
@@ -68,6 +119,7 @@ before final output is published. No network or provider process is used.
 
 ## Output files
 
+- `review.html`: portable local visual review and artifact links.
 - `source.gif`: exact original GIF bytes.
 - `frames/f0.png`, `frames/f1.png`, …: full normalized canvases in source order.
 - `sheet.png`, `sheet@2x.png`, `sheet.json`: stable cells and ordered timing data.
@@ -140,7 +192,8 @@ Official documentation checked 2026-11-08:
 
 Unrestricted local `forge.sh mcp` exposes `forge_gif_import` with `source`,
 `out_dir`, optional `width`, `height`, `palette` or `profile`, `tag`,
-`default_duration_ms`, and `save_project`. It returns the report plus 1x and 2x
+`default_duration_ms`, `save_project`, `colors` (1–62), `background_color`, and
+`background_tolerance` (0–32). It returns the report plus 1x and 2x
 sheets. API generation is deliberately CLI-only. The restricted read-only,
 authoring and workflow servers gain no filesystem or paid-provider permissions.
 Refresh local tool discovery after installing the change. Existing `prepare`,

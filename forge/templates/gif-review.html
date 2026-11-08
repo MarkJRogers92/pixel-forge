@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>$title · Pixel Forge review</title>
+<style>
+:root { color-scheme: dark; font: 15px/1.5 system-ui,sans-serif; background:#12151b; color:#eceff5; --surface:#222934; --checker:conic-gradient(#303844 25%,#222934 0 50%,#303844 0 75%,#222934 0); }
+* { box-sizing:border-box; } body { margin:0 auto; max-width:1200px; padding:28px; } h1 { margin:4px 0; font-size:30px; } h2 { margin:0 0 12px; font-size:19px; } p { margin:8px 0; } a { color:#9cdbff; } button,select { font:inherit; padding:7px 12px; background:#263345; border:1px solid #5a6d86; color:inherit; border-radius:6px; } button:disabled { opacity:.5; } button { cursor:pointer; } button:focus-visible,select:focus-visible,input:focus-visible { outline:3px solid #9cdbff; } .muted { color:#b8c3d4; } .status { display:inline-block; border:1px solid #857245; color:#ffe4a4; border-radius:5px; padding:3px 9px; font-size:13px; } .controls { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:18px 0; } .panels { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:20px 0; } section,details { border:1px solid #374151; border-radius:10px; padding:18px; background:#191f29; } .surface { background-color:var(--surface); background-image:var(--checker); background-size:20px 20px; border:1px solid #475569; overflow:auto; } .viewer { min-height:360px; display:flex; align-items:center; padding:16px; } .viewer img { margin:auto; flex:none; } img { image-rendering:pixelated; object-fit:contain; } #source { max-width:100%; max-height:326px; } #current { max-width:none; } .frames { display:flex; flex-wrap:wrap; align-items:start; gap:12px; } figure { margin:0; max-width:100%; } .frame { padding:12px; } .frame img { display:block; max-width:none; } figcaption { color:#b8c3d4; font-size:13px; margin:5px 0; } input[type=range] { flex:1; min-width:100px; } li { margin:10px 0; overflow-wrap:anywhere; } summary { cursor:pointer; font-weight:600; } .links { margin:16px 0; line-height:2; } body.light { --surface:#f0ece4; --checker:none; } body.dark { --surface:#111111; --checker:none; } @media(max-width:760px) { body { padding:16px; } .panels { grid-template-columns:1fr; } h1 { font-size:25px; } }
+</style>
+</head>
+<body>
+<header><p class="muted">PIXEL FORGE / CHATGPT GIF IMPORT</p><h1>$title</h1><p>$summary</p><span class="status">awaiting_visual_review</span></header>
+<p class="muted">Local review only. No upload or API call. Original GIF bytes are preserved.</p>
+<div class="controls">
+<label>Background <select id="background"><option value="checker">Checker</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+<label>Output scale <select id="scale"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
+</div>
+<div class="panels">
+<section><h2>Original download</h2><div class="surface viewer"><img id="source" src="source.gif" alt="Original downloaded animation, scaled to fit"></div><p class="muted">Scaled to fit. Browser playback, not synchronized with the output controls.</p></section>
+<section><h2>Converted output</h2><div class="surface viewer"><img id="current" src="frames/f0.png" width="$width" height="$height" alt="Converted frame 1"></div>
+<div class="controls"><button id="play" disabled>Play from start</button><button id="pause" disabled>Pause</button><button id="prev" aria-label="Previous frame">←</button><button id="next" aria-label="Next frame">→</button></div>
+<div class="controls"><label for="scrub">Frame</label><input id="scrub" type="range" min="0" max="0" value="0"><output id="position"></output></div><p class="muted" id="playback-status" role="status">Loading frames…</p></section>
+</div>
+<section><h2>Review before using in a game</h2><p>$palette</p><p>$removal</p><p>Check identity, full silhouette, motion, dark details and the last → first transition at 1x and 2x. Numeric verification does not approve the art. Keying cannot restore clipped limbs or repair the loop.</p><details><summary>QA warnings</summary><ul>$warnings</ul></details><nav class="links" aria-label="Output files">$links</nav></section>
+<section style="margin-top:20px"><h2>Every frame, in source order</h2><div class="frames">$frames</div></section>
+<noscript><p>Enable JavaScript for frame controls. All frame images and output links remain available.</p></noscript>
+<script type="application/json" id="review-data">$data</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('review-data').textContent);
+  const get = id => document.getElementById(id);
+  let index = 0, timer = null, repeats = 0;
+  function show() {
+    get('current').src = data.frames[index];
+    get('current').alt = 'Converted frame ' + (index + 1);
+    get('scrub').value = index;
+    get('position').textContent = (index + 1) + ' / ' + data.frames.length + ' · ' + data.durations_ms[index] + ' ms';
+  }
+  function stop(message) {
+    clearTimeout(timer); timer = null;
+    get('pause').disabled = true;
+    get('playback-status').textContent = message;
+  }
+  function advance() {
+    if (index === data.frames.length - 1) {
+      if (data.gif_loop_count === null || (data.gif_loop_count > 0 && repeats >= data.gif_loop_count)) {
+        stop('Playback finished. Use Play from start to replay.'); return;
+      }
+      repeats++; index = 0;
+    } else { index++; }
+    show(); timer = setTimeout(advance, data.durations_ms[index]);
+  }
+  get('scrub').max = data.frames.length - 1;
+  get('play').onclick = () => {
+    stop('Playing with source frame delays and repeat count.');
+    index = 0; repeats = 0; show(); get('pause').disabled = false;
+    timer = setTimeout(advance, data.durations_ms[index]);
+  };
+  get('pause').onclick = () => stop('Paused. Step or scrub to inspect; Play restarts.');
+  function step(i) { stop('Inspecting frame. Play restarts.'); index = i; show(); }
+  get('prev').onclick = () => step((index + data.frames.length - 1) % data.frames.length);
+  get('next').onclick = () => step((index + 1) % data.frames.length);
+  get('scrub').oninput = () => step(Number(get('scrub').value));
+  get('background').onchange = () => { document.body.className = get('background').value; };
+  get('scale').onchange = () => {
+    document.querySelectorAll('#current,.frame img').forEach(img => {
+      img.width = data.size[0] * Number(get('scale').value);
+      img.height = data.size[1] * Number(get('scale').value);
+    });
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stop('Paused while page was hidden. Play restarts.'); });
+  show();
+  Promise.all(data.frames.map(path => new Promise((resolve, reject) => {
+    const img = new Image(); img.onload = resolve; img.onerror = reject; img.src = path;
+  }))).then(() => {
+    get('play').disabled = false;
+    get('playback-status').textContent = 'Ready. Playback uses source delays; browser scheduling may vary.';
+  }).catch(() => stop('Some frames could not load. Keep review.html with its output folder.'));
+})();
+</script>
+</body></html>

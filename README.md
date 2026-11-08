@@ -13,6 +13,22 @@ Built on [Piskel](https://github.com/piskelapp/piskel) (Apache-2.0) for the edit
 ./forge.sh serve          # http://127.0.0.1:9002, then click the "AI" button on the right
 ```
 
+## Import a ChatGPT animation
+
+Download the actual GIF from ChatGPT, then run:
+
+```bash
+./forge.sh gif-import ~/Downloads/animation.gif -o out/animation \
+  -W 64 -H 64 --colors 62 --tag idle
+open out/animation/review.html  # Mac; otherwise open this file in a browser
+```
+
+No API key or credits. Review playback, individual frames, transparency and QA
+locally; add `--project` for editable Aseprite. `--colors` uses a shared source
+palette, while `--profile dead-mall` deliberately maps to the game colors.
+Optional explicit flat-background keying is available. See
+[GIF-WORKFLOW.md](GIF-WORKFLOW.md) for the ChatGPT prompt, safe keying and limits.
+
 ## Fresh clone setup
 
 Clone the editor submodule with the main repository, then install the local
@@ -367,9 +383,6 @@ modified; reference copies go to `profiles/refs/`.
 
 ### Animated GIFs
 
-`./forge.sh gif-import downloaded.gif -o out/clip -W 64 -H 64 --profile dead-mall`
-imports GIFs made in normal ChatGPT or elsewhere without an API key, preserving
-motion, frame delays and repeat counts through the stable clip workflow. Add
-`--project` for an editable Aseprite animation. An optional GPT Image 2.6 API
-adapter is offline by default and requires explicit paid opt-in and GIF preview
-access. See [GIF-WORKFLOW.md](GIF-WORKFLOW.md).
+Downloaded ChatGPT GIFs use the local importer and review workflow above.
+An optional GPT Image 2.6 API adapter is offline by default and requires explicit
+paid opt-in and GIF preview access. See [GIF-WORKFLOW.md](GIF-WORKFLOW.md).

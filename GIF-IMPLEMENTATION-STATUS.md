@@ -70,3 +70,40 @@ and the full suite passed outside that sandbox.
 The installed CLI exposes `gif-import` and its offline `gif-generate` preview.
 No billable generation request was made. GitHub publication uses a feature
 branch/draft pull request; merging main and deployment are separate actions.
+
+## ChatGPT download workflow follow-up (2026-11-08)
+
+Local integration on top of merged main `a4fac85`:
+
+- Every GIF import writes `review.html`: portable offline source/output review,
+  frame stepping/scrubbing, source delays/repeats, 1x/2x/4x viewing, backgrounds,
+  grouped QA warnings and links to frames/sheets/Aseprite.
+- Explicit `--colors 1..62` derives one bounded, deterministic source palette
+  across the animation, avoiding an unnecessary game-palette remap. Exact-color
+  mode and fixed profile/palette modes retain their defaults.
+- Explicit `--background-color` plus optional tolerance removes only
+  edge-connected matching pixels before conversion. Enclosed dark details stay;
+  connected outlines are at risk and the page warns about it. Original bytes,
+  canvas alignment, frame order, blank frames and delays remain preserved.
+- Existing unrestricted MCP exposes the same import options. No restricted
+  permission expansion, Piskel submodule change, paid call or game edit.
+
+Validation: real downloaded 12-frame, 266x475 ChatGPT mop GIF imported twice
+at 128x224 with 62 shared source colors, keeping all 130 ms delays and infinite
+repeat. Both retained-background and transparent trial were verified; the latter
+also exported real editable Aseprite. Safari opened the review directly by
+`file://`; playback, pause/restart, wrapping frame steps, background selection
+and 2x scaling were exercised. The viewer grows to fit tall enlarged frames
+rather than adding artificial clipping. Unit tests cover scrubbing, finite
+repeat counts, repeated play, hidden-page pause and timer cancellation.
+
+The test GIF is not approved art: several action frames touch the source edge,
+and the loop endpoints differ. Keying cannot restore clipped content or fix
+motion. The source file is unchanged. Independent review found no blocking code
+issues. This follow-up is committed only locally; it is not pushed or merged.
+
+Final follow-up suite: **515 passed, 0 failed, 0 skipped**. Python `compileall`
+and `git diff --check` passed. One existing Pillow `getdata` deprecation warning
+remains. The full suite was run with normal Mac process access for Aseprite and
+worker cancellation checks. A deliberate missing-timer-cancellation mutation
+failed the review control regression test; restoring cancellation passed it.

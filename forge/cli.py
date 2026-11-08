@@ -19,6 +19,7 @@
   quantize IMAGE                     reduce colours with Aseprite's quantizer (+ optional dithering)
   blend BASE TOP                     composite two images with an Aseprite blend mode (multiply, screen, ...)
   clip FRAME... -o DIR              stable full-canvas PNG clip import + manifest/QA
+  gif-import SOURCE -o DIR          downloaded ChatGPT GIF -> local clip and visual review
   animate OUT DIR FRAME...           build an animation (frames + tag); export sprite sheet + GIF
   manifest IMAGE -o DIR              one explicit asset manifest: reference, canvas/anchor, states,
                                      animations, outputs, generation; exported and round-trip verified
@@ -327,7 +328,11 @@ def main(argv=None):
         gp.add_argument("--palette", help="shared comma-separated opaque hex colours")
         gp.add_argument("--profile", help="existing shared game palette")
         if command == "gif-import":
+            gp.add_argument("--colors", type=int, help="reduce to 1..62 shared source colors instead of a game palette")
             gi.add_argument("--default-duration-ms", type=int, help="explicit delay only for missing/zero GIF timings")
+            gi.add_argument("--background-color", help="opt-in edge-connected #RGB/#RRGGBB removal; inspect outlines")
+            gi.add_argument("--background-tolerance", type=int, default=0,
+                            help="RGB channel tolerance 0..32 for background removal (default: exact match)")
         else:
             from .gif_provider import MODELS
             gi.add_argument("--model", choices=MODELS, default=MODELS[0])
@@ -594,7 +599,9 @@ def main(argv=None):
                        tag=a.tag, save_project=a.save_project)
         try:
             if a.cmd == "gif-import":
-                result = import_gif(a.source, a.out, default_duration_ms=a.default_duration_ms, **options)
+                result = import_gif(a.source, a.out, default_duration_ms=a.default_duration_ms,
+                    background_color=a.background_color, background_tolerance=a.background_tolerance,
+                    colors=a.colors, **options)
             else:
                 result = generate_clip(a.prompt, a.out, execute_paid=a.execute_paid, model=a.model,
                     frame_count=a.frame_count, frame_duration_ms=a.frame_duration_ms,
